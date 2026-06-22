@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconTruck, IconPlus, IconX, IconCheck, IconPackage, IconBuildingStore } from '@tabler/icons-react'
+import { IconTruck, IconPlus, IconX, IconCheck, IconPackage, IconBuildingStore, IconChartBar } from '@tabler/icons-react'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -54,7 +54,7 @@ function Embarques() {
   async function cargarTodo() {
     const resEmb = await supabase
       .from('embarques')
-      .select('*, pedidos(folio, total, clientes(nombre, nombre_comercial, color, iniciales))')
+      .select('*, pedidos(folio, total, etapa, tipo_entrega, clientes(nombre, nombre_comercial, color, iniciales))')
       .order('created_at', { ascending: false })
     setEmbarques(resEmb.data || [])
 
@@ -138,6 +138,20 @@ function Embarques() {
   const entregados = embarques.filter(function (e) { return e.estado === 'entregado' }).length
   const pendientes = embarques.filter(function (e) { return e.estado === 'pendiente' }).length
 
+  const embarquesEntregados = embarques.filter(function (e) { return e.estado === 'entregado' })
+  const montoEntregado = embarquesEntregados.reduce(function (acc, e) {
+    const ped = e.pedidos
+    return acc + (ped ? Number(ped.total) : 0)
+  }, 0)
+  const pedidosCompletos = embarquesEntregados.filter(function (e) {
+    const ped = e.pedidos
+    return ped && ped.tipo_entrega === 'completa'
+  }).length
+  const pedidosIncompletos = embarquesEntregados.length - pedidosCompletos
+  const pctCompletos = embarquesEntregados.length > 0
+    ? Math.round((pedidosCompletos / embarquesEntregados.length) * 100)
+    : 0
+
   return (
     <div style={{ fontFamily: 'sans-serif', minHeight: '100vh', background: COLORES.crema }}>
 
@@ -169,6 +183,44 @@ function Embarques() {
           <div style={{ background: '#fff', border: '1px solid #ddd8cc', borderRadius: '12px', padding: '0.9rem 1rem' }}>
             <div style={{ color: '#7A7060', fontSize: '11px', textTransform: 'uppercase' }}>Pendientes</div>
             <div style={{ color: COLORES.dorado, fontSize: '22px', fontWeight: 500 }}>{pendientes}</div>
+          </div>
+        </div>
+
+        {/* NUEVA SECCIÓN: ESTADÍSTICAS DE PEDIDOS ENTREGADOS */}
+        <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', overflow: 'hidden', marginBottom: '1.25rem' }}>
+          <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e8e0d0' }}>
+            <strong style={{ fontSize: '13px' }}>
+              <IconChartBar size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+              Estadísticas de pedidos entregados
+            </strong>
+          </div>
+          <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: '11px', color: '#7A7060', textTransform: 'uppercase', marginBottom: '4px' }}>Pedidos entregados</div>
+              <div style={{ fontSize: '26px', fontWeight: 500, color: COLORES.verde }}>{embarquesEntregados.length}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#7A7060', textTransform: 'uppercase', marginBottom: '4px' }}>Monto entregado</div>
+              <div style={{ fontSize: '26px', fontWeight: 500, color: COLORES.verde2 }}>${montoEntregado.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#7A7060', textTransform: 'uppercase', marginBottom: '4px' }}>Completos vs incompletos</div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '20px', fontWeight: 500, color: COLORES.verde2 }}>{pedidosCompletos}</span>
+                <span style={{ fontSize: '12px', color: '#7A7060' }}>completos</span>
+                <span style={{ fontSize: '20px', fontWeight: 500, color: '#C0321A' }}>{pedidosIncompletos}</span>
+                <span style={{ fontSize: '12px', color: '#7A7060' }}>incompletos</span>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '11px', color: '#7A7060', textTransform: 'uppercase', marginBottom: '4px' }}>% Cumplimiento</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ flex: 1, background: '#E8E0D0', borderRadius: '999px', height: '10px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: pctCompletos + '%', background: pctCompletos >= 80 ? COLORES.verde2 : COLORES.dorado, borderRadius: '999px' }}></div>
+                </div>
+                <span style={{ fontSize: '16px', fontWeight: 500, color: pctCompletos >= 80 ? COLORES.verde2 : COLORES.dorado }}>{pctCompletos}%</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -299,4 +351,4 @@ function Embarques() {
   )
 }
 
-export default Embarques
+export default Embarques    
