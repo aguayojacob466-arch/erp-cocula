@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconClipboardList, IconPlus, IconX, IconCheck, IconTrash } from '@tabler/icons-react'
+import { IconClipboardList, IconPlus, IconX, IconCheck, IconTrash, IconChartBar, IconUsers, IconBox } from '@tabler/icons-react'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -29,11 +29,21 @@ const ETAPAS = [
   { id: 'entregado', label: 'Entregado', color: '#2E6B4A' },
 ]
 
+function tabBtnStyle(activo) {
+  return {
+    fontSize: '12px', padding: '8px 14px', border: 'none', background: 'transparent', cursor: 'pointer',
+    color: activo ? COLORES.verde : '#7A7060', fontWeight: 500,
+    borderBottom: activo ? '2px solid ' + COLORES.verde : '2px solid transparent'
+  }
+}
+
 function Pedidos() {
   const [clientes, setClientes] = useState([])
   const [pedidos, setPedidos] = useState([])
+  const [pedidoItems, setPedidoItems] = useState([])
   const [cargando, setCargando] = useState(true)
   const [modalAbierto, setModalAbierto] = useState(false)
+  const [tab, setTab] = useState('pedidos')
 
   const [clienteId, setClienteId] = useState('')
   const [productosCliente, setProductosCliente] = useState([])
@@ -44,19 +54,24 @@ function Pedidos() {
   const [fechaEntrega, setFechaEntrega] = useState('')
   const [guardando, setGuardando] = useState(false)
 
-  useEffect(() => {
+  useEffect(function () {
     cargarTodo()
   }, [])
 
   async function cargarTodo() {
-    const { data: cl } = await supabase.from('clientes').select('*')
-    setClientes(cl || [])
+    const resCl = await supabase.from('clientes').select('*')
+    setClientes(resCl.data || [])
 
-    const { data: ped } = await supabase
+    const resPed = await supabase
       .from('pedidos')
       .select('*, clientes(nombre, nombre_comercial, color, iniciales)')
       .order('created_at', { ascending: false })
-    setPedidos(ped || [])
+    setPedidos(resPed.data || [])
+
+    const resItems = await supabase
+      .from('pedido_items')
+      .select('*, productos(sku, nombre), pedidos(cliente_id, fecha, clientes(nombre, nombre_comercial, color))')
+    setPedidoItems(resItems.data || [])
 
     setCargando(false)
   }
@@ -79,8 +94,8 @@ function Pedidos() {
       setProductosCliente([])
       return
     }
-    const { data } = await supabase.from('productos').select('*').eq('cliente_id', id)
-    setProductosCliente(data || [])
+    const resp = await supabase.from('productos').select('*').eq('cliente_id', id)
+    setProductosCliente(resp.data || [])
   }
 
   function agregarItem() {
@@ -140,16 +155,9 @@ function Pedidos() {
       const insertPedido = await supabase
         .from('pedidos')
         .insert([{
-          folio: folio,
-          cliente_id: clienteId,
-          oc_cliente: ocCliente,
-          fecha: fecha,
-          fecha_entrega: fechaEntrega,
-          subtotal: totales.subtotal,
-          descuento_logistica: totales.descuento,
-          total: totales.total,
-          factoraje: cliente ? cliente.factoraje : false,
-          etapa: 'oc'
+          folio: folio, cliente_id: clienteId, oc_cliente: ocCliente, fecha: fecha, fecha_entrega: fechaEntrega,
+          subtotal: totales.subtotal, descuento_logistica: totales.descuento, total: totales.total,
+          factoraje: cliente ? cliente.factoraje : false, etapa: 'oc'
         }])
         .select()
         .single()
@@ -201,18 +209,52 @@ function Pedidos() {
     }
   }
 
-  if (cargando) {
-    return <p style={{ padding: '2rem' }}>Cargando pedidos...</p>
-  }
-
-  const totales = calcularTotales()
-
   function getEtapaInfo(etapaId) {
     for (let i = 0; i < ETAPAS.length; i++) {
       if (ETAPAS[i].id === etapaId) return ETAPAS[i]
     }
     return ETAPAS[0]
   }
+
+  if (cargando) {
+    return <p style={{ padding: '2rem' }}>Cargando pedidos...</p>
+  }
+
+  const totales = calcularTotales()
+
+  // ESTADÍSTICAS GENERALES
+  const totalVentas = pedidos.reduce(function (acc, p) { return acc + Number(p.total) }, 0)
+  const totalPedidos = pedidos.length
+  const ticketPromedio = totalPedidos > 0 ? totalVentas / totalPedidos : 0
+  const totalDescuentos = pedidos.reduce(function (acc, p) { return acc + Number(p.descuento_logistica || 0) }, 0)
+
+  // ESTADÍSTICAS POR CLIENTE
+  const ventasPorCliente = {}
+  pedidos.forEach(function (p) {
+    const cli = p.clientes
+    const nombreCli = (cli && (cli.nombre_comercial || cli.nombre)) || 'Sin cliente'
+    if (!ventasPorCliente[nombreCli]) {
+      ventasPorCliente[nombreCli] = { nombre: nombreCli, color: (cli && cli.color) || COLORES.verde2, iniciales: (cli && cli.iniciales) || '—', total: 0, pedidos: 0 }
+    }
+    ventasPorCliente[nombreCli].total += Number(p.total)
+    ventasPorCliente[nombreCli].pedidos += 1
+  })
+  const listaClientes = Object.values(ventasPorCliente).sort(function (a, b) { return b.total - a.total })
+  const maxClienteTotal = listaClientes.length > 0 ? listaClientes[0].total : 1
+
+  // ESTADÍSTICAS POR PRODUCTO
+  const ventasPorProducto = {}
+  pedidoItems.forEach(function (it) {
+    const prod = it.productos
+    const skuProd = (prod && prod.sku) || 'Sin SKU'
+    if (!ventasPorProducto[skuProd]) {
+      ventasPorProducto[skuProd] = { sku: skuProd, nombre: (prod && prod.nombre) || '—', cantidad: 0, total: 0 }
+    }
+    ventasPorProducto[skuProd].cantidad += Number(it.cantidad)
+    ventasPorProducto[skuProd].total += Number(it.cantidad) * Number(it.precio)
+  })
+  const listaProductos = Object.values(ventasPorProducto).sort(function (a, b) { return b.total - a.total })
+  const maxProductoTotal = listaProductos.length > 0 ? listaProductos[0].total : 1
 
   return (
     <div style={{ fontFamily: 'sans-serif', minHeight: '100vh', background: COLORES.crema }}>
@@ -227,75 +269,172 @@ function Pedidos() {
         </div>
       </div>
 
-      <div style={{ padding: '1.5rem' }}>
-        <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', overflow: 'hidden' }}>
-          <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e8e0d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: '13px' }}>
-              <IconClipboardList size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-              Pedidos registrados
-            </strong>
-            <button onClick={abrirNuevoPedido} style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', border: 'none', background: COLORES.verde, color: COLORES.amarillo, cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <IconPlus size={14} /> Nuevo pedido
-            </button>
-          </div>
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e8e0d0', background: '#FAF6EE', padding: '0 1.5rem' }}>
+        <button onClick={function () { setTab('pedidos') }} style={tabBtnStyle(tab === 'pedidos')}>
+          <IconClipboardList size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />Pedidos
+        </button>
+        <button onClick={function () { setTab('resumen') }} style={tabBtnStyle(tab === 'resumen')}>
+          <IconChartBar size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />Resumen
+        </button>
+        <button onClick={function () { setTab('cliente') }} style={tabBtnStyle(tab === 'cliente')}>
+          <IconUsers size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />Por cliente
+        </button>
+        <button onClick={function () { setTab('producto') }} style={tabBtnStyle(tab === 'producto')}>
+          <IconBox size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />Por producto
+        </button>
+      </div>
 
-          {pedidos.length === 0 ? (
-            <p style={{ padding: '1.5rem', fontSize: '13px', color: '#7A7060', textAlign: 'center' }}>Sin pedidos registrados aún.</p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ background: '#FAF6EE' }}>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Folio</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Cliente</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>OC Cliente</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Entrega</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Total</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Etapa</th>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidos.map(function (p) {
-                  const etapaInfo = getEtapaInfo(p.etapa)
-                  const cli = p.clientes
-                  return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid #f0e8d8' }}>
-                      <td style={{ padding: '10px 12px', fontWeight: 500, color: COLORES.verde2 }}>{p.folio}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: (cli && cli.color) || COLORES.verde2, color: '#fff', fontSize: '9px', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {(cli && cli.iniciales) || '—'}
+      <div style={{ padding: '1.5rem' }}>
+
+        {tab === 'pedidos' && (
+          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e8e0d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong style={{ fontSize: '13px' }}>Pedidos registrados</strong>
+              <button onClick={abrirNuevoPedido} style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', border: 'none', background: COLORES.verde, color: COLORES.amarillo, cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <IconPlus size={14} /> Nuevo pedido
+              </button>
+            </div>
+
+            {pedidos.length === 0 ? (
+              <p style={{ padding: '1.5rem', fontSize: '13px', color: '#7A7060', textAlign: 'center' }}>Sin pedidos registrados aún.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#FAF6EE' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Folio</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Cliente</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>OC Cliente</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Entrega</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Total</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Etapa</th>
+                    <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#7A7060', textTransform: 'uppercase' }}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pedidos.map(function (p) {
+                    const etapaInfo = getEtapaInfo(p.etapa)
+                    const cli = p.clientes
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid #f0e8d8' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 500, color: COLORES.verde2 }}>{p.folio}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: (cli && cli.color) || COLORES.verde2, color: '#fff', fontSize: '9px', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {(cli && cli.iniciales) || '—'}
+                            </div>
+                            {(cli && (cli.nombre_comercial || cli.nombre)) || '—'}
                           </div>
-                          {(cli && (cli.nombre_comercial || cli.nombre)) || '—'}
-                        </div>
-                      </td>
-                      <td style={{ padding: '10px 12px', color: '#7A7060' }}>{p.oc_cliente || '—'}</td>
-                      <td style={{ padding: '10px 12px', color: '#7A7060' }}>{p.fecha_entrega || '—'}</td>
-                      <td style={{ padding: '10px 12px', fontWeight: 500, color: COLORES.verde }}>${Number(p.total).toFixed(2)}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 500, padding: '3px 10px', borderRadius: '999px', background: etapaInfo.color + '22', color: etapaInfo.color }}>
-                          {etapaInfo.label}
-                        </span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {p.etapa !== 'entregado' && (
-                            <button onClick={function () { avanzarEtapa(p) }} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: '1px solid ' + COLORES.dorado, background: 'transparent', color: COLORES.dorado, cursor: 'pointer' }}>
-                              Avanzar
+                        </td>
+                        <td style={{ padding: '10px 12px', color: '#7A7060' }}>{p.oc_cliente || '—'}</td>
+                        <td style={{ padding: '10px 12px', color: '#7A7060' }}>{p.fecha_entrega || '—'}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 500, color: COLORES.verde }}>${Number(p.total).toFixed(2)}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 500, padding: '3px 10px', borderRadius: '999px', background: etapaInfo.color + '22', color: etapaInfo.color }}>
+                            {etapaInfo.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {p.etapa !== 'entregado' && (
+                              <button onClick={function () { avanzarEtapa(p) }} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '8px', border: '1px solid ' + COLORES.dorado, background: 'transparent', color: COLORES.dorado, cursor: 'pointer' }}>
+                                Avanzar
+                              </button>
+                            )}
+                            <button onClick={function () { eliminarPedido(p) }} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '8px', border: '1px solid #F0C0B8', background: 'transparent', color: '#C0321A', cursor: 'pointer' }}>
+                              <IconTrash size={12} />
                             </button>
-                          )}
-                          <button onClick={function () { eliminarPedido(p) }} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '8px', border: '1px solid #F0C0B8', background: 'transparent', color: '#C0321A', cursor: 'pointer' }}>
-                            <IconTrash size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
+        {tab === 'resumen' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '1.25rem' }}>
+              <div style={{ background: COLORES.verde, borderRadius: '12px', padding: '0.9rem 1rem' }}>
+                <div style={{ color: COLORES.claro, fontSize: '11px', textTransform: 'uppercase' }}>Total ventas</div>
+                <div style={{ color: COLORES.amarillo, fontSize: '22px', fontWeight: 500 }}>${totalVentas.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div style={{ background: COLORES.verde2, borderRadius: '12px', padding: '0.9rem 1rem' }}>
+                <div style={{ color: '#c0f0d8', fontSize: '11px', textTransform: 'uppercase' }}>Pedidos totales</div>
+                <div style={{ color: '#fff', fontSize: '22px', fontWeight: 500 }}>{totalPedidos}</div>
+              </div>
+              <div style={{ background: COLORES.dorado, borderRadius: '12px', padding: '0.9rem 1rem' }}>
+                <div style={{ color: '#fff8e0', fontSize: '11px', textTransform: 'uppercase' }}>Ticket promedio</div>
+                <div style={{ color: '#fff', fontSize: '22px', fontWeight: 500 }}>${ticketPromedio.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div style={{ background: '#fff', border: '1px solid #ddd8cc', borderRadius: '12px', padding: '0.9rem 1rem' }}>
+                <div style={{ color: '#7A7060', fontSize: '11px', textTransform: 'uppercase' }}>Desc. logística total</div>
+                <div style={{ color: COLORES.dorado, fontSize: '22px', fontWeight: 500 }}>${totalDescuentos.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === 'cliente' && (
+          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', padding: '1.25rem' }}>
+            <strong style={{ fontSize: '13px', display: 'block', marginBottom: '1rem' }}>Ventas por cliente</strong>
+            {listaClientes.length === 0 ? (
+              <p style={{ fontSize: '13px', color: '#7A7060' }}>Sin datos aún.</p>
+            ) : (
+              listaClientes.map(function (c, i) {
+                const pct = Math.round((c.total / maxClienteTotal) * 100)
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: c.color, color: '#fff', fontSize: '11px', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {c.iniciales}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 500 }}>{c.nombre}</span>
+                        <span style={{ color: COLORES.verde, fontWeight: 500 }}>${c.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div style={{ background: '#E8E0D0', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: pct + '%', background: c.color, borderRadius: '999px' }}></div>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#7A7060', marginTop: '2px' }}>{c.pedidos} pedido(s)</div>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {tab === 'producto' && (
+          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', padding: '1.25rem' }}>
+            <strong style={{ fontSize: '13px', display: 'block', marginBottom: '1rem' }}>Ventas por producto</strong>
+            {listaProductos.length === 0 ? (
+              <p style={{ fontSize: '13px', color: '#7A7060' }}>Sin datos aún.</p>
+            ) : (
+              listaProductos.map(function (p, i) {
+                const pct = Math.round((p.total / maxProductoTotal) * 100)
+                return (
+                  <div key={i} style={{ marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                      <span>
+                        <span style={{ fontWeight: 500, color: COLORES.verde2 }}>{p.sku}</span>
+                        <span style={{ color: '#5A5040', marginLeft: '6px' }}>{p.nombre}</span>
+                      </span>
+                      <span style={{ color: COLORES.verde, fontWeight: 500 }}>${p.total.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div style={{ background: '#E8E0D0', borderRadius: '999px', height: '8px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: pct + '%', background: COLORES.verde2, borderRadius: '999px' }}></div>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#7A7060', marginTop: '2px' }}>{p.cantidad} unidades vendidas</div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
       </div>
 
       {modalAbierto && (
@@ -329,19 +468,6 @@ function Pedidos() {
                 <input type="date" style={inputStyle} value={fechaEntrega} onChange={function (e) { setFechaEntrega(e.target.value) }} />
               </div>
             </div>
-
-            {clienteId && (function () {
-              let clienteSeleccionado = null
-              for (let i = 0; i < clientes.length; i++) {
-                if (clientes[i].id === clienteId) clienteSeleccionado = clientes[i]
-              }
-              if (!clienteSeleccionado) return null
-              return (
-                <div style={{ background: '#F0FAF4', border: '1px solid ' + COLORES.verde2, borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '12px' }}>
-                  <span>Crédito: <strong>{clienteSeleccionado.dias_credito} días</strong> · Desc. log.: <strong>{clienteSeleccionado.descuento_logistica}%</strong> · Factoraje: <strong>{clienteSeleccionado.factoraje ? 'Sí' : 'No'}</strong></span>
-                </div>
-              )
-            })()}
 
             <label style={labelStyle}>Productos</label>
             {items.length === 0 ? (
