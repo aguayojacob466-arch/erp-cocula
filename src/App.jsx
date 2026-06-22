@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Clientes from './Clientes'
 import Pedidos from './Pedidos'
 import Productos from './Productos'
+import Embarques from './Embarques'
 
 function App() {
   const [vista, setVista] = useState('clientes')
@@ -20,11 +21,13 @@ function App() {
         <button onClick={function () { setVista('clientes') }} style={botonEstilo(vista === 'clientes')}>Clientes</button>
         <button onClick={function () { setVista('productos') }} style={botonEstilo(vista === 'productos')}>Productos</button>
         <button onClick={function () { setVista('pedidos') }} style={botonEstilo(vista === 'pedidos')}>Pedidos</button>
+        <button onClick={function () { setVista('embarques') }} style={botonEstilo(vista === 'embarques')}>Embarques</button>
       </div>
 
       {vista === 'clientes' && <Clientes />}
       {vista === 'productos' && <Productos />}
       {vista === 'pedidos' && <Pedidos />}
+      {vista === 'embarques' && <Embarques />}
     </div>
   )
 }
