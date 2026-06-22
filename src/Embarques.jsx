@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconTruck, IconPlus, IconX, IconCheck, IconPackage, IconBuildingStore, IconChartBar } from '@tabler/icons-react'
+import { IconTruck, IconPlus, IconX, IconCheck, IconPackage, IconBuildingStore, IconChartBar, IconAlertTriangle } from '@tabler/icons-react'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -34,6 +34,14 @@ const TIPOS_EMBARQUE = [
   { id: 'recoleccion', label: 'Recolección en tienda', icon: IconBuildingStore },
 ]
 
+const MOTIVOS_FALTANTE = [
+  { id: '', label: '— Sin especificar —' },
+  { id: 'devolucion', label: 'Devolución de cliente' },
+  { id: 'logistica', label: 'Proveedor logístico no llegó a tiempo' },
+  { id: 'produccion', label: 'No se produjo el producto' },
+  { id: 'otro', label: 'Otro' },
+]
+
 function Embarques() {
   const [embarques, setEmbarques] = useState([])
   const [pedidos, setPedidos] = useState([])
@@ -46,6 +54,11 @@ function Embarques() {
   const [carrier, setCarrier] = useState('')
   const [destino, setDestino] = useState('')
   const [fechaEstimada, setFechaEstimada] = useState('')
+
+  const [modalEntregaAbierto, setModalEntregaAbierto] = useState(false)
+  const [embarqueEntrega, setEmbarqueEntrega] = useState(null)
+  const [itemsEntrega, setItemsEntrega] = useState([])
+  const [guardandoEntrega, setGuardandoEntrega] = useState(false)
 
   useEffect(function () {
     cargarTodo()
@@ -104,6 +117,10 @@ function Embarques() {
   }
 
   async function cambiarEstado(embarque, nuevoEstado) {
+    if (nuevoEstado === 'entregado') {
+      abrirModalEntrega(embarque)
+      return
+    }
     const resp = await supabase.from('embarques').update({ estado: nuevoEstado }).eq('id', embarque.id)
     if (!resp.error) {
       setEmbarques(function (prev) {
@@ -112,6 +129,79 @@ function Embarques() {
           return e
         })
       })
+    }
+  }
+
+  async function abrirModalEntrega(embarque) {
+    setEmbarqueEntrega(embarque)
+    const resItems = await supabase
+      .from('pedido_items')
+      .select('*, productos(sku, nombre, unidad)')
+      .eq('pedido_id', embarque.pedido_id)
+
+    const items = (resItems.data || []).map(function (it) {
+      return {
+        id: it.id,
+        producto: it.productos,
+        cantidadPedida: it.cantidad,
+        cantidadEntregada: it.cantidad,
+        motivoFaltante: '',
+        motivoOtro: ''
+      }
+    })
+    setItemsEntrega(items)
+    setModalEntregaAbierto(true)
+  }
+
+  function actualizarItemEntrega(index, campo, valor) {
+    setItemsEntrega(function (prev) {
+      return prev.map(function (it, i) {
+        if (i !== index) return it
+        const copia = Object.assign({}, it)
+        copia[campo] = valor
+        return copia
+      })
+    })
+  }
+
+  async function confirmarEntrega() {
+    setGuardandoEntrega(true)
+
+    try {
+      for (let i = 0; i < itemsEntrega.length; i++) {
+        const it = itemsEntrega[i]
+        const resp = await supabase
+          .from('pedido_items')
+          .update({
+            cantidad_entregada: it.cantidadEntregada,
+            motivo_faltante: Number(it.cantidadEntregada) < Number(it.cantidadPedida) ? it.motivoFaltante : null,
+            motivo_otro: it.motivoFaltante === 'otro' ? it.motivoOtro : null
+          })
+          .eq('id', it.id)
+        if (resp.error) throw resp.error
+      }
+
+      const todoCompleto = itemsEntrega.every(function (it) {
+        return Number(it.cantidadEntregada) >= Number(it.cantidadPedida)
+      })
+
+      await supabase
+        .from('pedidos')
+        .update({ tipo_entrega: todoCompleto ? 'completa' : 'parcial' })
+        .eq('id', embarqueEntrega.pedido_id)
+
+      await supabase
+        .from('embarques')
+        .update({ estado: 'entregado' })
+        .eq('id', embarqueEntrega.id)
+
+      setModalEntregaAbierto(false)
+      setEmbarqueEntrega(null)
+      cargarTodo()
+    } catch (err) {
+      alert('Error al guardar la entrega: ' + err.message)
+    } finally {
+      setGuardandoEntrega(false)
     }
   }
 
@@ -186,7 +276,6 @@ function Embarques() {
           </div>
         </div>
 
-        {/* NUEVA SECCIÓN: ESTADÍSTICAS DE PEDIDOS ENTREGADOS */}
         <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', overflow: 'hidden', marginBottom: '1.25rem' }}>
           <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e8e0d0' }}>
             <strong style={{ fontSize: '13px' }}>
@@ -279,6 +368,9 @@ function Embarques() {
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{ fontSize: '11px', fontWeight: 500, padding: '3px 10px', borderRadius: '999px', background: estadoInfo.color + '22', color: estadoInfo.color }}>
                           {estadoInfo.label}
+                          {e.estado === 'entregado' && ped && ped.tipo_entrega === 'parcial' && (
+                            <IconAlertTriangle size={12} style={{ marginLeft: '4px', verticalAlign: 'middle' }} />
+                          )}
                         </span>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
@@ -347,8 +439,94 @@ function Embarques() {
           </div>
         </div>
       )}
+
+      {modalEntregaAbierto && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '12px', padding: '2rem', width: '90vw', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '2px solid ' + COLORES.dorado }}>
+              <div>
+                <h3 style={{ fontSize: '17px', color: COLORES.verde, margin: 0 }}>Confirmar entrega</h3>
+                <p style={{ fontSize: '12px', color: '#7A7060', margin: '4px 0 0' }}>Captura cuánto se entregó realmente de cada producto</p>
+              </div>
+              <button onClick={function () { setModalEntregaAbierto(false) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A7060' }}>
+                <IconX size={20} />
+              </button>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginBottom: '12px' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '10px', color: '#7A7060', textTransform: 'uppercase' }}>Producto</th>
+                  <th style={{ textAlign: 'center', padding: '6px 8px', fontSize: '10px', color: '#7A7060', textTransform: 'uppercase' }}>Pedido</th>
+                  <th style={{ textAlign: 'center', padding: '6px 8px', fontSize: '10px', color: '#7A7060', textTransform: 'uppercase' }}>Entregado</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '10px', color: '#7A7060', textTransform: 'uppercase' }}>Motivo del faltante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itemsEntrega.map(function (it, i) {
+                  const faltante = Number(it.cantidadEntregada) < Number(it.cantidadPedida)
+                  return (
+                    <tr key={it.id} style={{ borderBottom: '1px solid #f0e8d8' }}>
+                      <td style={{ padding: '8px' }}>
+                        <div style={{ fontWeight: 500 }}>{(it.producto && it.producto.nombre) || '—'}</div>
+                        <div style={{ fontSize: '10px', color: '#7A7060' }}>{(it.producto && it.producto.sku) || ''}</div>
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>{it.cantidadPedida}</td>
+                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max={it.cantidadPedida}
+                          value={it.cantidadEntregada}
+                          onChange={function (e) { actualizarItemEntrega(i, 'cantidadEntregada', parseFloat(e.target.value) || 0) }}
+                          style={{ width: '70px', fontSize: '12px', padding: '4px 6px', border: '1px solid ' + (faltante ? '#F0C0B8' : '#ddd8cc'), borderRadius: '6px', background: faltante ? '#FFE0DB' : '#FAF6EE', textAlign: 'center' }}
+                        />
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        {faltante ? (
+                          <div>
+                            <select
+                              value={it.motivoFaltante}
+                              onChange={function (e) { actualizarItemEntrega(i, 'motivoFaltante', e.target.value) }}
+                              style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ddd8cc', background: '#FAF6EE', width: '100%' }}
+                            >
+                              {MOTIVOS_FALTANTE.map(function (m) {
+                                return <option key={m.id} value={m.id}>{m.label}</option>
+                              })}
+                            </select>
+                            {it.motivoFaltante === 'otro' && (
+                              <input
+                                type="text"
+                                placeholder="Especificar..."
+                                value={it.motivoOtro}
+                                onChange={function (e) { actualizarItemEntrega(i, 'motivoOtro', e.target.value) }}
+                                style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #ddd8cc', background: '#FAF6EE', width: '100%', marginTop: '4px' }}
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: COLORES.verde2 }}>Completo ✓</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '1rem', borderTop: '1px solid #e8e0d0' }}>
+              <button onClick={function () { setModalEntregaAbierto(false) }} style={{ fontSize: '13px', padding: '8px 18px', borderRadius: '8px', border: '1px solid #ddd8cc', background: 'transparent', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={confirmarEntrega} disabled={guardandoEntrega} style={{ fontSize: '13px', padding: '8px 22px', borderRadius: '8px', border: 'none', background: COLORES.verde, color: COLORES.amarillo, cursor: 'pointer', fontWeight: 500, opacity: guardandoEntrega ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {guardandoEntrega ? 'Guardando...' : (<span><IconCheck size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} />Confirmar entrega</span>)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export default Embarques    
+export default Embarques
