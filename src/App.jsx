@@ -5,6 +5,7 @@ import Pedidos from './Pedidos'
 import Productos from './Productos'
 import Embarques from './Embarques'
 import Inventario from './Inventario'
+import Produccion from './Produccion'
 
 function App() {
   const [vista, setVista] = useState('dashboard')
@@ -26,6 +27,7 @@ function App() {
         <button onClick={function () { setVista('pedidos') }} style={botonEstilo(vista === 'pedidos')}>Pedidos</button>
         <button onClick={function () { setVista('embarques') }} style={botonEstilo(vista === 'embarques')}>Embarques</button>
         <button onClick={function () { setVista('inventario') }} style={botonEstilo(vista === 'inventario')}>Inventario</button>
+        <button onClick={function () { setVista('produccion') }} style={botonEstilo(vista === 'produccion')}>Produccion</button>
       </div>
 
       {vista === 'dashboard' && <Dashboard />}
@@ -34,6 +36,7 @@ function App() {
       {vista === 'pedidos' && <Pedidos />}
       {vista === 'embarques' && <Embarques />}
       {vista === 'inventario' && <Inventario />}
+      {vista === 'produccion' && <Produccion />}
     </div>
   )
 }
