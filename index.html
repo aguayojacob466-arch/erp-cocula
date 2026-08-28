@@ -1,13 +1,1138 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>erp-cocula</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Ventas 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --primary:#1a5fb4;--primary-dark:#155899;--primary-light:#4a90d9;
+  --orange:#e67e22;--orange-dark:#d35400;--orange-light:#f39c12;
+  --bg:#f4f6fa;--card:#fff;--text:#222;--text2:#555;--text3:#888;
+  --border:#d0d8e8;--success:#27ae60;--danger:#c0392b;--purple:#9b59b6;
+  --radius:10px;--shadow:0 2px 8px rgba(0,0,0,.08);
+}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;}
+h1,h2,h3{font-weight:700;margin-bottom:.3em;}
+a{color:var(--primary);text-decoration:none;}
+
+/* Layout */
+.top-bar{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;padding:.8rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;position:sticky;top:0;z-index:100;}
+.top-bar h1{font-size:1.3rem;display:flex;align-items:center;gap:.5rem;}
+.top-bar .role-badge{font-size:.7rem;background:rgba(255,255,255,.2);padding:2px 10px;border-radius:12px;margin-left:.8rem;}
+.top-bar .btn-row{display:flex;gap:.4rem;flex-wrap:wrap;}
+
+.tabs{display:flex;background:#fff;border-bottom:2px solid var(--border);padding:0 1rem;overflow-x:auto;}
+.tab{padding:.7rem 1.2rem;cursor:pointer;font-weight:600;font-size:.88rem;border-bottom:3px solid transparent;transition:.2s;white-space:nowrap;}
+.tab:hover{background:#f0f4ff;}
+.tab.active-ventas{border-bottom-color:var(--primary);color:var(--primary);}
+.tab.active-fact{border-bottom-color:var(--orange);color:var(--orange);}
+
+.main-content{padding:1rem 1.2rem;max-width:1300px;margin:0 auto;}
+
+/* Cards */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.2rem;margin-bottom:1rem;}
+.card h2{font-size:1.05rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem;}
+.card h3{font-size:.92rem;margin-bottom:.4rem;}
+
+/* KPI row */
+.kpi-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;}
+.kpi{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem 1.2rem;min-width:150px;flex:1;text-align:center;}
+.kpi .kpi-label{font-size:.75rem;color:var(--text3);text-transform:uppercase;font-weight:600;}
+.kpi .kpi-value{font-size:1.5rem;font-weight:800;margin:.2rem 0;}
+.kpi .kpi-sub{font-size:.72rem;color:var(--text2);}
+.kpi.blue{border-top:3px solid var(--primary);}
+.kpi.blue .kpi-value{color:var(--primary);}
+.kpi.orange{border-top:3px solid var(--orange);}
+.kpi.orange .kpi-value{color:var(--orange);}
+.kpi.green{border-top:3px solid var(--success);}
+.kpi.green .kpi-value{color:var(--success);}
+.kpi.purple{border-top:3px solid var(--purple);}
+.kpi.purple .kpi-value{color:var(--purple);}
+
+/* Charts */
+.charts-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;}
+.chart-box{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem;flex:1;min-width:300px;height:360px;}
+.chart-box h3{font-size:.88rem;margin-bottom:.3rem;}
+
+/* Tables */
+.table-wrap{overflow-x:auto;margin-top:.5rem;}
+table{width:100%;border-collapse:collapse;font-size:.78rem;}
+th{background:#eef2fa;padding:.45rem .5rem;text-align:left;font-weight:700;position:sticky;top:0;white-space:nowrap;}
+td{padding:.35rem .5rem;border-bottom:1px solid #eee;white-space:nowrap;}
+tr:nth-child(even){background:#f8f9fc;}
+tr:hover{background:#eef2ff;}
+input.cell-edit{width:100%;border:none;background:transparent;font-size:.78rem;padding:2px 4px;}
+input.cell-edit:focus{outline:2px solid var(--primary);border-radius:3px;background:#fff;}
+.consultor-readonly input.cell-edit{pointer-events:none;opacity:.8;}
+
+/* Filters */
+.filter-bar{display:flex;gap:.6rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem;}
+.filter-bar label{font-size:.75rem;font-weight:600;color:var(--text2);}
+.filter-bar select,.filter-bar input{padding:.35rem .6rem;border:1px solid var(--border);border-radius:6px;font-size:.78rem;}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:.3rem;padding:.45rem .9rem;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;transition:.15s;}
+.btn:hover{filter:brightness(1.08);}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-sm{padding:.3rem .6rem;font-size:.72rem;}
+.btn-danger{background:var(--danger);color:#fff;}
+.btn-success{background:var(--success);color:#fff;}
+.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary);}
+.btn-orange{background:var(--orange);color:#fff;}
+
+/* Toast */
+#toastContainer{position:fixed;top:70px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.toast{padding:.7rem 1.2rem;border-radius:8px;font-size:.82rem;font-weight:600;color:#fff;animation:slideIn .3s;max-width:350px;box-shadow:0 4px 12px rgba(0,0,0,.15);}
+.toast.info{background:var(--primary);}
+.toast.success{background:var(--success);}
+.toast.error{background:var(--danger);}
+.toast.warn{background:var(--orange);}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}
+@keyframes fadeOut{from{opacity:1;}to{opacity:0;}}
+.toast.fade-out{animation:fadeOut .3s forwards;}
+
+/* Sync indicator */
+.sync-indicator{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;padding:2px 10px;border-radius:12px;background:rgba(255,255,255,.2);}
+.sync-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.sync-dot.offline{background:#e74c3c;}
+.sync-dot.syncing{background:#f39c12;animation:pulse 1s infinite;}
+.sync-dot.online{background:#27ae60;}
+.sync-dot.error{background:#e74c3c;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+/* Login overlay */
+.login-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#1a5fb4,#155899);z-index:1000;display:flex;align-items:center;justify-content:center;}
+.login-card{background:#fff;border-radius:14px;padding:2rem;width:90%;max-width:400px;box-shadow:0 8px 30px rgba(0,0,0,.2);}
+.login-card h2{color:var(--primary);text-align:center;margin-bottom:.5rem;font-size:1.3rem;}
+.login-card .group-name{text-align:center;font-size:.85rem;color:var(--text2);margin-bottom:1.2rem;}
+.login-card input{width:100%;padding:.55rem .8rem;border:1px solid var(--border);border-radius:8px;font-size:.85rem;margin-bottom:.6rem;}
+.login-card .btn{width:100%;justify-content:center;padding:.65rem;font-size:.9rem;margin-top:.5rem;}
+.login-card .role-select{display:flex;gap:.5rem;margin:.8rem 0;}
+.login-card .role-btn{flex:1;padding:.5rem;border:2px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;font-weight:600;font-size:.8rem;transition:.2s;}
+.login-card .role-btn.selected{border-color:var(--primary);background:#eef2ff;color:var(--primary);}
+.login-card .error-text{color:var(--danger);font-size:.78rem;min-height:1.2em;}
+
+/* Firebase setup modal */
+.fb-modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;display:flex;align-items:center;justify-content:center;}
+.fb-modal-content{background:#fff;border-radius:14px;padding:1.5rem;width:90%;max-width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.2);}
+.fb-modal-content h2{color:var(--primary);margin-bottom:.3rem;font-size:1.15rem;}
+.fb-modal-content .field{margin-bottom:.6rem;}
+.fb-modal-content .field label{display:block;font-size:.75rem;font-weight:600;color:var(--text2);margin-bottom:.2rem;}
+.fb-modal-content .field input{width:100%;padding:.4rem .6rem;border:1px solid var(--border);border-radius:6px;font-size:.78rem;}
+.fb-modal-content .field .hint{font-size:.68rem;color:var(--text3);margin-top:.15rem;}
+.fb-modal-content .field input.auto-filled{background:#f0fff0;border-color:#27ae60;}
+
+/* Sections */
+.section{display:none;}
+.section.visible{display:block;}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px;}
+
+/* Responsive */
+@media(max-width:768px){
+  .kpi{min-width:120px;}
+  .charts-row{flex-direction:column;}
+  .chart-box{height:280px;}
+  .filter-bar{flex-direction:column;align-items:stretch;}
+}
+</style>
+</head>
+<body>
+
+<!-- Toast Container -->
+<div id="toastContainer"></div>
+
+<!-- Login Overlay -->
+<div id="loginOverlay" class="login-overlay" style="display:none;">
+  <div class="login-card">
+    <h2>📊 Dashboard de Ventas</h2>
+    <p class="group-name">Promaquila de Cocula</p>
+    <div id="loginSetup">
+      <p style="font-size:.8rem;color:var(--text2);margin-bottom:.6rem;">Configura tu acceso por primera vez:</p>
+      <input id="setupPass" type="password" placeholder="Crear contraseña (mín. 4 caracteres)">
+      <input id="setupPass2" type="password" placeholder="Confirmar contraseña">
+    </div>
+    <div class="role-select" id="loginRoleSelect">
+      <div class="role-btn" onclick="selectLoginRole('admin')" id="roleBtnAdmin">👨‍💼 Administrador</div>
+      <div class="role-btn" onclick="selectLoginRole('consultor')" id="roleBtnConsultor">👁 Consultor</div>
+    </div>
+    <p class="error-text" id="setupError"></p>
+    <button class="btn btn-primary" id="loginEnter" onclick="enterDashboard()">Entrar</button>
+    <div id="loginPass" style="display:none;margin-top:.5rem;">
+      <p style="font-size:.8rem;color:var(--text2);margin-bottom:.5rem;">Ya tienes acceso configurado:</p>
+      <input id="loginPassInput" type="password" placeholder="Contraseña">
+      <div class="role-select" id="loginRoleSelect2">
+        <div class="role-btn" onclick="selectLoginRole2('admin')" id="roleBtn2Admin">👨‍💼 Administrador</div>
+        <div class="role-btn" onclick="selectLoginRole2('consultor')" id="roleBtn2Consultor">👁 Consultor</div>
+      </div>
+      <button class="btn btn-primary" onclick="loginWithPassword()">Iniciar Sesión</button>
+    </div>
+    <p id="loginError" class="error-text"></p>
+  </div>
+</div>
+
+<!-- Top Bar -->
+<div class="top-bar" id="topBar" style="display:none;">
+  <h1>📊 Dashboard de Ventas 2026 <span class="role-badge" id="roleBadge"></span> <span class="sync-indicator" id="syncIndicator"><span class="sync-dot offline" id="syncDot"></span> <span id="syncLabel">Offline</span></span></h1>
+  <div class="btn-row">
+    <label class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;cursor:pointer;">📂 Importar Excel <input type="file" accept=".xlsx,.xls,.csv" multiple onchange="importFiles(this.files)" style="display:none;"></label>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="exportAllXLSX()">📥 Exportar XLSX</button>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="forceFirebaseSync()">🔄 Sincronizar</button>
+    <button class="btn btn-sm" id="btnFirebase" style="background:rgba(255,255,255,.15);color:#fff;" onclick="openFirebaseSetup()">☁️ Firebase</button>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="copySharedLink()">🔗 Enlace Consultor</button>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs" id="tabBar" style="display:none;">
+  <div class="tab active-ventas" onclick="switchTab('ventas')" id="tabVentas">📈 Ventas</div>
+  <div class="tab" onclick="switchTab('inventario')" id="tabInventario">📦 Inventario</div>
+  <div class="tab" onclick="switchTab('devoluciones')" id="tabDevoluciones">↩️ Devoluciones</div>
+  <div class="tab" onclick="switchTab('facturacion')" id="tabFacturacion">🧾 Facturación</div>
+</div>
+
+<!-- Main Content -->
+<div class="main-content" id="mainContent" style="display:none;">
+
+  <!-- VENTAS SECTION -->
+  <div class="section visible" id="secVentas">
+    <div class="kpi-row" id="ventasKpis"></div>
+    <div class="filter-bar" id="ventasFilters"></div>
+    <div class="charts-row">
+      <div class="chart-box" id="chartVentasSuc"></div>
+      <div class="chart-box" id="chartVentasProd"></div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-box" id="chartVentasTrend"></div>
+      <div class="chart-box" id="chartVentasClient"></div>
+    </div>
+    <div class="card"><h2>📋 Detalle de Ventas</h2><div class="table-wrap" id="tblVentas"></div></div>
+  </div>
+
+  <!-- INVENTARIO SECTION -->
+  <div class="section" id="secInventario">
+    <div class="kpi-row" id="invKpis"></div>
+    <div class="filter-bar" id="invFilters"></div>
+    <div class="charts-row">
+      <div class="chart-box" id="chartInvSuc"></div>
+      <div class="chart-box" id="chartInvProd"></div>
+    </div>
+    <div class="card"><h2>📋 Detalle de Inventario</h2><div class="table-wrap" id="tblInventario"></div></div>
+  </div>
+
+  <!-- DEVOLUCIONES SECTION -->
+  <div class="section" id="secDevoluciones">
+    <div class="kpi-row" id="devKpis"></div>
+    <div class="filter-bar" id="devFilters"></div>
+    <div class="charts-row">
+      <div class="chart-box" id="chartDevSuc"></div>
+      <div class="chart-box" id="chartDevProd"></div>
+    </div>
+    <div class="card"><h2>📋 Detalle de Devoluciones</h2><div class="table-wrap" id="tblDevoluciones"></div></div>
+  </div>
+
+  <!-- FACTURACION SECTION -->
+  <div class="section" id="secFacturacion">
+    <div class="kpi-row" id="factKpis"></div>
+    <div class="filter-bar" id="factFilters"></div>
+    <div class="charts-row">
+      <div class="chart-box" id="chartFactSuc"></div>
+      <div class="chart-box" id="chartFactTrend"></div>
+    </div>
+    <div class="card"><h2>📋 Detalle de Facturación</h2><div class="table-wrap" id="tblFacturacion"></div></div>
+  </div>
+
+</div>
+
+<script>
+/* ===== GLOBALS ===== */
+let ventas=[], inventario=[], devoluciones=[], facturacion=[];
+let CURRENT_ROLE='admin';
+let _selectedLoginRole=null, _selectedLoginRole2=null;
+const _SUC=['Cocula','Culiacán','Monterrey','Exportación'];
+const sucursalColors={Cocula:'#1a5fb4',Culiacán:'#f39c12',Monterrey:'#27ae60',Exportación:'#9b59b6'};
+let firebaseApp=null, firebaseDb=null, firebaseDbRef=null, firebaseConfig=null;
+let _firebaseListenerAttached=false, _firebaseWriteInProgress=false, _firebaseTimeout=null, _firebaseDataReceived=false;
+let currentTab='ventas';
+let _charts={};
+
+/* ===== TOAST ===== */
+function showToast(msg,type='info'){
+  const c=document.getElementById('toastContainer');
+  const t=document.createElement('div');
+  t.className='toast '+type;
+  t.textContent=msg;
+  c.appendChild(t);
+  setTimeout(()=>{t.classList.add('fade-out');setTimeout(()=>t.remove(),350);},3500);
+}
+
+/* ===== AUTH / ROLES ===== */
+function isAuthenticated(){
+  return !!sessionStorage.getItem('promaquila_auth');
+}
+function getCurrentRole(){
+  return sessionStorage.getItem('promaquila_auth')||'admin';
+}
+function isAccessSetUp(){
+  return !!localStorage.getItem('promaquila_pass');
+}
+function selectLoginRole(r){
+  _selectedLoginRole=r;
+  document.getElementById('roleBtnAdmin').classList.toggle('selected',r==='admin');
+  document.getElementById('roleBtnConsultor').classList.toggle('selected',r==='consultor');
+}
+function selectLoginRole2(r){
+  _selectedLoginRole2=r;
+  document.getElementById('roleBtn2Admin').classList.toggle('selected',r==='admin');
+  document.getElementById('roleBtn2Consultor').classList.toggle('selected',r==='consultor');
+}
+function setupPassword(){
+  const p1=document.getElementById('setupPass').value, p2=document.getElementById('setupPass2').value;
+  const err=document.getElementById('setupError');
+  if(!_selectedLoginRole){err.textContent='Selecciona un rol primero.';return;}
+  if(!p1||p1.length<4){err.textContent='La contraseña debe tener al menos 4 caracteres.';return;}
+  if(p1!==p2){err.textContent='Las contraseñas no coinciden.';return;}
+  localStorage.setItem('promaquila_pass',p1);
+  localStorage.setItem('promaquila_role',_selectedLoginRole);
+  err.textContent='';
+  showToast('Acceso configurado correctamente','success');
+  document.getElementById('loginSetup').style.display='none';
+  document.getElementById('loginEnter').style.display='none';
+  document.getElementById('loginRoleSelect').style.display='none';
+  document.getElementById('loginPass').parentElement.style.display='block';
+  document.getElementById('loginPass').style.display='block';
+  // Auto-enter
+  sessionStorage.setItem('promaquila_auth',_selectedLoginRole);
+  enterDashboard();
+}
+function loginWithPassword(){
+  const p=document.getElementById('loginPassInput').value;
+  const stored=localStorage.getItem('promaquila_pass');
+  const err=document.getElementById('loginError');
+  if(!p){err.textContent='Ingresa tu contraseña.';return;}
+  if(p!==stored){err.textContent='Contraseña incorrecta.';return;}
+  if(!_selectedLoginRole2){err.textContent='Selecciona tu rol.';return;}
+  sessionStorage.setItem('promaquila_auth',_selectedLoginRole2);
+  err.textContent='';
+  enterDashboard();
+}
+function enterDashboard(){
+  CURRENT_ROLE=getCurrentRole();
+  document.getElementById('loginOverlay').style.display='none';
+  document.getElementById('topBar').style.display='flex';
+  document.getElementById('tabBar').style.display='flex';
+  document.getElementById('mainContent').style.display='block';
+  document.getElementById('roleBadge').textContent=CURRENT_ROLE==='admin'?'Administrador':'Consultor';
+  applyRolePermissions();
+  loadFromLocal();
+  initFirebase();
+  renderAll();
+}
+
+function initAccessControl(){
+  if(isAuthenticated()){
+    enterDashboard();
+    return;
+  }
+  /* Consultor shared link — NO PASSWORD NEEDED */
+  const urlParams=new URLSearchParams(window.location.search);
+  if(urlParams.get('mode')==='consultor'){
+    /* *** CRITICAL FIX: Extract Firebase config from URL hash and save to localStorage *** */
+    const fbFromUrl=extractFirebaseConfigFromUrl();
+    if(fbFromUrl){
+      saveFirebaseConfig(fbFromUrl);
+      console.log('Firebase config recibido desde enlace compartido — guardado en localStorage');
+      showToast('☁️ Configuración Firebase recibida desde el enlace','success');
+    }
+    sessionStorage.setItem('promaquila_auth','consultor');
+    CURRENT_ROLE='consultor';
+    enterDashboard();
+    /* If Firebase listener doesn't fire within 10 seconds, warn user */
+    _firebaseTimeout=setTimeout(()=>{
+      if(!_firebaseDataReceived){
+        showToast('⚠️ No se recibieron datos de la nube en 10s. Verifica Firebase.','warn');
+        updateSyncIndicator('offline');
+      }
+    },10000);
+    return;
+  }
+  if(isAccessSetUp()){
+    document.getElementById('loginSetup').style.display='none';
+    document.getElementById('loginEnter').style.display='none';
+    document.getElementById('loginRoleSelect').style.display='none';
+    document.getElementById('loginPass').style.display='block';
+  }else{
+    document.getElementById('loginSetup').style.display='block';
+    document.getElementById('loginRoleSelect').style.display='block';
+    document.getElementById('loginEnter').style.display='block';
+  }
+  document.getElementById('loginOverlay').style.display='flex';
+}
+
+function applyRolePermissions(){
+  if(CURRENT_ROLE==='consultor'){
+    document.getElementById('btnFirebase').style.display='none';
+    document.getElementById('mainContent').classList.add('consultor-readonly');
+  }else{
+    document.getElementById('btnFirebase').style.display='';
+    document.getElementById('mainContent').classList.remove('consultor-readonly');
+  }
+}
+
+/* ===== TABS ===== */
+function switchTab(t){
+  currentTab=t;
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('visible'));
+  document.querySelectorAll('.tab').forEach(t2=>t2.className='tab');
+  const secMap={ventas:'secVentas',inventario:'secInventario',devoluciones:'secDevoluciones',facturacion:'secFacturacion'};
+  const tabMap={ventas:'tabVentas',inventario:'tabInventario',devoluciones:'tabDevoluciones',facturacion:'tabFacturacion'};
+  document.getElementById(secMap[t]).classList.add('visible');
+  const isFact=t==='facturacion';
+  document.getElementById(tabMap[t]).classList.add(isFact?'active-fact':'active-ventas');
+  /* Resize charts on tab switch */
+  setTimeout(()=>{
+    Object.values(_charts).forEach(c=>{try{c.resize();}catch(e){}});
+  },100);
+}
+
+/* ===== LOCAL STORAGE ===== */
+function saveLocal(){
+  localStorage.setItem('dash_ventas',JSON.stringify(ventas));
+  localStorage.setItem('dash_inv',JSON.stringify(inventario));
+  localStorage.setItem('dash_dev',JSON.stringify(devoluciones));
+  localStorage.setItem('dash_fact',JSON.stringify(facturacion));
+}
+function loadFromLocal(){
+  try{ventas=JSON.parse(localStorage.getItem('dash_ventas'))||[];}catch(e){ventas=[];}
+  try{inventario=JSON.parse(localStorage.getItem('dash_inv'))||[];}catch(e){inventario=[];}
+  try{devoluciones=JSON.parse(localStorage.getItem('dash_dev'))||[];}catch(e){devoluciones=[];}
+  try{facturacion=JSON.parse(localStorage.getItem('dash_fact'))||[];}catch(e){facturacion=[];}
+}
+
+/* ===== DUPLICATE KEY ===== */
+function dupKey(r,type){
+  if(type==='ventas') return (r.folio||'')+'|'+(r.id||'')+'|'+(r.fecha||'')+'|'+(r.producto||'')+'|'+(r.cliente||'');
+  if(type==='inventario') return (r.codigo||'')+'|'+(r.producto||'')+'|'+(r.sucursal||'');
+  if(type==='devoluciones') return (r.folio||'')+'|'+(r.fecha||'')+'|'+(r.producto||'')+'|'+(r.cliente||'');
+  if(type==='facturacion') return (r.folio||'')+'|'+(r.fecha||'')+'|'+(r.total||'')+'|'+(r.sucursal||'');
+  return JSON.stringify(r);
+}
+
+/* ===== DATA MERGE (anti-duplicate) ===== */
+function mergeData(arr,newRows,type){
+  const keySet=new Set(arr.map(r=>dupKey(r,type)));
+  let added=0;
+  for(const r of newRows){
+    const k=dupKey(r,type);
+    if(!keySet.has(k)){arr.push(r);keySet.add(k);added++;}
+  }
+  return added;
+}
+
+/* ===== IMPORT EXCEL ===== */
+function importFiles(files){
+  if(!files||!files.length)return;
+  let totalAdded=0, processed=0;
+  const count=files.length;
+  for(const f of files){
+    const reader=new FileReader();
+    reader.onload=function(e){
+      try{
+        const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+        for(const sheetName of wb.SheetNames){
+          const ws=wb.Sheets[sheetName];
+          const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+          if(raw.length<4)continue;
+          /* Detect type by header row */
+          const headers=raw[2]||raw[0]||[];
+          const hLower=headers.map(h=>(h+'').toLowerCase().trim());
+          let type=null, startRow=3;
+          if(hLower.some(h=>h.includes('folio'))&&hLower.some(h=>h.includes('cliente'))) type='ventas';
+          else if(hLower.some(h=>h.includes('código'))||hLower.some(h=>h.includes('codigo'))) type='inventario';
+          else if(hLower.some(h=>h.includes('devolución'))||hLower.some(h=>h.includes('devolucion'))) type='devoluciones';
+          else if(hLower.some(h=>h.includes('factura'))||hLower.some(h=>h.includes('rfc'))) type='facturacion';
+          /* Fallback: use sheet name */
+          if(!type){
+            const sn=sheetName.toLowerCase();
+            if(sn.includes('venta'))type='ventas';
+            else if(sn.includes('inventario')||sn.includes('inv'))type='inventario';
+            else if(sn.includes('devolucion')||sn.includes('dev'))type='devoluciones';
+            else if(sn.includes('factura')||sn.includes('fact'))type='facturacion';
+          }
+          if(!type)continue;
+          /* Check for CONTPAQ format (3 metadata rows) */
+          const hasContpaqMeta=raw.length>3&&raw[0].length<=2&&raw[1].length<=2;
+          const dataStart=hasContpaqMeta?3:1;
+          const hdrRow=hasContpaqMeta?2:0;
+          const hdrs=raw[hdrRow]||[];
+          const rows=raw.slice(dataStart).filter(r=>r.some(c=>c!==''));
+          const mapped=rows.map(r=>{
+            const obj={};
+            hdrs.forEach((h,i)=>{obj[h]=(r[i]!==undefined&&r[i]!==null)?r[i]:'';});
+            /* Standardize keys */
+            obj.folio=obj.folio||obj.Folio||obj.FOLIO||'';
+            obj.fecha=fmtDate(obj.fecha||obj.Fecha||obj.FECHA||obj.fecha_documento||'');
+            obj.cliente=obj.cliente||obj.Cliente||obj.CLIENTE||obj.Nombre||'';
+            obj.producto=obj.producto||obj.Producto||obj.PRODUCTO||obj.Artículo||obj.Articulo||'';
+            obj.cantidad=obj.cantidad||obj.Cantidad||obj.CANTIDAD||obj.Cant||0;
+            obj.precio=obj.precio||obj.Precio||obj.PRECIO||obj.Precio_Unitario||0;
+            obj.total=obj.total||obj.Total||obj.TOTAL||obj.Importe||0;
+            obj.sucursal=obj.sucursal||obj.Sucursal||obj.SUCURSAL||'Cocula';
+            /* Fix sucursal */
+            const s=(obj.sucursal+'').trim();
+            if(_SUC.map(s2=>s2.toLowerCase()).includes(s.toLowerCase())){
+              obj.sucursal=_SUC.find(s2=>s2.toLowerCase()===s.toLowerCase());
+            }else{obj.sucursal='Cocula';}
+            /* Numeric conversions */
+            obj.cantidad=toNum(obj.cantidad);
+            obj.precio=toNum(obj.precio);
+            obj.total=toNum(obj.total);
+            return obj;
+          });
+          let added=0;
+          if(type==='ventas') added=mergeData(ventas,mapped,'ventas');
+          else if(type==='inventario') added=mergeData(inventario,mapped,'inventario');
+          else if(type==='devoluciones') added=mergeData(devoluciones,mapped,'devoluciones');
+          else if(type==='facturacion') added=mergeData(facturacion,mapped,'facturacion');
+          totalAdded+=added;
+        }
+      }catch(err){
+        console.error('Error reading file:',err);
+        showToast('❌ Error al leer '+f.name+': '+err.message,'error');
+      }
+      processed++;
+      if(processed===count){
+        saveLocal();
+        pushToFirebase();
+        renderAll();
+        showToast('✅ Se importaron '+totalAdded+' registros nuevos','success');
+      }
+    };
+    reader.readAsArrayBuffer(f);
+  }
+}
+
+function toNum(v){
+  if(v===undefined||v===null||v==='')return 0;
+  const n=parseFloat((''+v).replace(/[$,]/g,''));
+  return isNaN(n)?0:n;
+}
+function fmtDate(v){
+  if(!v)return '';
+  if(v instanceof Date){const y=v.getFullYear(),m=''+(v.getMonth()+1).padStart(2,'0'),d=''+v.getDate().padStart(2,'0');return y+'-'+m+'-'+d;}
+  const s=''+v;
+  /* Try dd/mm/yyyy */
+  const m1=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if(m1)return m1[3]+'-'+m1[2].padStart(2,'0')+'-'+m1[1].padStart(2,'0');
+  return s;
+}
+function fmtMoney(n){return '$'+toNum(n).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+/* ===== EXPORT XLSX ===== */
+function exportAllXLSX(){
+  const wb=XLSX.utils.book_new();
+  if(ventas.length){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ventas),'Ventas');}
+  if(inventario.length){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(inventario),'Inventario');}
+  if(devoluciones.length){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(devoluciones),'Devoluciones');}
+  if(facturacion.length){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(facturacion),'Facturación');}
+  XLSX.writeFile(wb,'Dashboard_Promaquila_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  showToast('Archivo XLSX exportado','success');
+}
+
+/* ===== FIREBASE ===== */
+function getFirebaseConfig(){
+  try{
+    const raw=localStorage.getItem('firebase_config');
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return null;
+}
+function saveFirebaseConfig(cfg){
+  localStorage.setItem('firebase_config',JSON.stringify(cfg));
+}
+
+/* Encode/decode Firebase config for sharing via URL hash */
+function encodeFirebaseConfigForUrl(cfg){
+  try{
+    const json=JSON.stringify(cfg);
+    return btoa(unescape(encodeURIComponent(json)));
+  }catch(e){console.error('Error encoding Firebase config:',e);return null;}
+}
+function decodeFirebaseConfigFromUrl(str){
+  try{
+    const json=decodeURIComponent(escape(atob(str)));
+    return JSON.parse(json);
+  }catch(e){console.error('Error decoding Firebase config from URL:',e);return null;}
+}
+/* Extract Firebase config from URL hash (#fb=...) */
+function extractFirebaseConfigFromUrl(){
+  try{
+    const hash=window.location.hash;
+    if(!hash) return null;
+    const m=hash.match(/[#&]fb=([A-Za-z0-9+/=]+)/);
+    if(m&&m[1]) return decodeFirebaseConfigFromUrl(m[1]);
+  }catch(e){console.error('Error extracting Firebase config from URL:',e);}
+  return null;
+}
+
+/* Auto-generate databaseURL from projectId if missing */
+function ensureDatabaseURL(cfg){
+  if(cfg.databaseURL) return cfg;
+  /* Standard Firebase RTDB URL pattern: https://<projectId>-default-rtdb.firebaseio.com */
+  /* Also try: https://<projectId>.firebaseio.com (older projects) */
+  if(cfg.projectId){
+    cfg.databaseURL='https://'+cfg.projectId+'-default-rtdb.firebaseio.com';
+    console.log('databaseURL auto-generada:',cfg.databaseURL);
+    showToast('🔗 Database URL auto-generada: '+cfg.databaseURL,'info');
+  }
+  return cfg;
+}
+
+function initFirebase(){
+  firebaseConfig=getFirebaseConfig();
+  if(!firebaseConfig){
+    updateSyncIndicator('offline');
+    showToast('📱 Sin configuración Firebase — datos solo locales','warn');
+    return;
+  }
+  /* Auto-fill databaseURL if missing */
+  firebaseConfig=ensureDatabaseURL(firebaseConfig);
+  saveFirebaseConfig(firebaseConfig);
+  _firebaseDataReceived=false;
+  try{
+    if(!firebaseApp){
+      firebaseApp=firebase.initializeApp(firebaseConfig);
+    }
+    firebaseDb=firebase.database();
+    firebaseDbRef=firebaseDb.ref('promaquila');
+    updateSyncIndicator('syncing');
+    attachFirebaseListener();
+  }catch(e){
+    console.error('Firebase init error:',e);
+    /* If auto-generated URL is wrong, try the old pattern */
+    if(e.message&&e.message.includes('databaseURL')&&firebaseConfig.projectId){
+      const altUrl='https://'+firebaseConfig.projectId+'.firebaseio.com';
+      console.log('Intentando URL alternativa:',altUrl);
+      firebaseConfig.databaseURL=altUrl;
+      saveFirebaseConfig(firebaseConfig);
+      try{
+        if(firebaseApp){try{firebaseApp.delete();}catch(e2){}}
+        firebaseApp=firebase.initializeApp(firebaseConfig);
+        firebaseDb=firebase.database();
+        firebaseDbRef=firebaseDb.ref('promaquila');
+        updateSyncIndicator('syncing');
+        attachFirebaseListener();
+        showToast('🔗 Conectado con URL alternativa','info');
+        return;
+      }catch(e3){
+        console.error('Alt URL also failed:',e3);
+      }
+    }
+    updateSyncIndicator('error');
+    showToast('❌ Error al conectar Firebase: '+e.message,'error');
+  }
+}
+
+function forceFirebaseSync(){
+  if(!firebaseDbRef){
+    showToast('Firebase no configurado. Usa el botón ☁️ para configurarlo.','warn');
+    return;
+  }
+  updateSyncIndicator('syncing');
+  _firebaseDataReceived=false;
+  firebaseDbRef.once('value',snap=>{
+    if(snap.exists()){
+      pullFromFirebase(snap.val());
+      showToast('🔄 Datos sincronizados desde la nube','success');
+    }else{
+      showToast('No hay datos en la nube todavía','warn');
+    }
+    updateSyncIndicator('online');
+  },err=>{
+    showToast('❌ Error: '+err.message,'error');
+    updateSyncIndicator('error');
+  });
+}
+
+function attachFirebaseListener(){
+  if(_firebaseListenerAttached||!firebaseDbRef)return;
+  _firebaseListenerAttached=true;
+  firebaseDbRef.on('value',snap=>{
+    if(_firebaseWriteInProgress)return;
+    if(snap.exists()){
+      pullFromFirebase(snap.val());
+      _firebaseDataReceived=true;
+      updateSyncIndicator('online');
+      if(_firebaseTimeout){clearTimeout(_firebaseTimeout);_firebaseTimeout=null;}
+    }
+  },err=>{
+    console.error('Firebase listener error:',err);
+    updateSyncIndicator('error');
+    showToast('❌ Error de Firebase: '+err.message,'error');
+  });
+}
+
+function pullFromFirebase(data){
+  let changed=false;
+  if(data.ventas&&Array.isArray(data.ventas)){ventas.length=0;ventas.push(...data.ventas);changed=true;}
+  if(data.inventario&&Array.isArray(data.inventario)){inventario.length=0;inventario.push(...data.inventario);changed=true;}
+  if(data.devoluciones&&Array.isArray(data.devoluciones)){devoluciones.length=0;devoluciones.push(...data.devoluciones);changed=true;}
+  if(data.facturacion&&Array.isArray(data.facturacion)){facturacion.length=0;facturacion.push(...data.facturacion);changed=true;}
+  if(changed){
+    saveLocal();
+    renderAll();
+  }
+}
+
+function pushToFirebase(){
+  if(!firebaseDbRef)return;
+  _firebaseWriteInProgress=true;
+  const data={ventas,inventario,devoluciones,facturacion};
+  firebaseDbRef.set(data).then(()=>{
+    _firebaseWriteInProgress=false;
+    updateSyncIndicator('online');
+  }).catch(e=>{
+    _firebaseWriteInProgress=false;
+    console.error('Firebase write error:',e);
+    showToast('❌ Error al guardar en Firebase: '+e.message,'error');
+    updateSyncIndicator('error');
+  });
+}
+
+function updateSyncIndicator(state){
+  const dot=document.getElementById('syncDot');
+  const lbl=document.getElementById('syncLabel');
+  dot.className='sync-dot '+state;
+  const labels={offline:'Offline',syncing:'Sincronizando...',online:'En línea',error:'Error'};
+  lbl.textContent=labels[state]||state;
+}
+
+/* ===== FIREBASE SETUP UI ===== */
+function openFirebaseSetup(){
+  const cfg=getFirebaseConfig()||{};
+  const modal=document.createElement('div');
+  modal.id='firebaseSetupModal';
+  modal.className='fb-modal';
+  modal.innerHTML=`
+  <div class="fb-modal-content">
+    <h2>☁️ Configuración de Firebase</h2>
+    <p style="font-size:.78rem;color:var(--text2);margin-bottom:1rem;">Ingresa los datos de tu proyecto Firebase. Puedes copiarlos desde la consola de Firebase → Configuración del proyecto → Tus aplicaciones.</p>
+    <div class="field"><label>API Key *</label><input id="fb-apiKey" value="${cfg.apiKey||''}" placeholder="AIzaSy..."></div>
+    <div class="field"><label>Auth Domain</label><input id="fb-authDomain" value="${cfg.authDomain||''}" placeholder="tu-proyecto.firebaseapp.com"></div>
+    <div class="field">
+      <label>Database URL *</label>
+      <input id="fb-databaseURL" value="${cfg.databaseURL||''}" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com">
+      <div class="hint">Si no aparece en Firebase Console, se auto-genera a partir del Project ID. También puedes buscarla en Firebase → Build → Realtime Database.</div>
+    </div>
+    <div class="field"><label>Project ID *</label><input id="fb-projectId" value="${cfg.projectId||''}" placeholder="tu-proyecto" oninput="autoGenDbUrl()"></div>
+    <div class="field"><label>Storage Bucket</label><input id="fb-storageBucket" value="${cfg.storageBucket||''}" placeholder="tu-proyecto.appspot.com"></div>
+    <div class="field"><label>Messaging Sender ID</label><input id="fb-messagingSenderId" value="${cfg.messagingSenderId||''}" placeholder="123456789"></div>
+    <div class="field"><label>App ID</label><input id="fb-appId" value="${cfg.appId||''}" placeholder="1:123456789:web:abc123"></div>
+    <div class="btn-row" style="margin-top:1rem;display:flex;gap:.5rem;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="applyFirebaseConfig()">💾 Guardar y Conectar</button>
+      <button class="btn btn-danger" onclick="removeFirebaseConfig()">🗑 Eliminar</button>
+      <button class="btn" style="background:#888;color:#fff;" onclick="closeFirebaseSetup()">Cancelar</button>
+    </div>
+    <div style="margin-top:1.2rem;padding:.8rem;background:#f0f4ff;border-radius:8px;border:1px solid #d0d8e8;">
+      <p style="font-size:.85rem;font-weight:600;margin-bottom:.5rem;">🔗 Enlace para Consultores</p>
+      <p style="font-size:.75rem;color:#555;margin-bottom:.6rem;">Comparte este enlace con los Consultores. Contiene la configuración Firebase para que vean los datos desde cualquier dispositivo.</p>
+      <div style="display:flex;gap:.5rem;align-items:center;">
+        <input id="sharedLinkField" readonly style="flex:1;padding:.4rem .6rem;border:1px solid #ccc;border-radius:4px;font-size:.72rem;background:#fff;">
+        <button class="btn btn-sm" style="background:#1a5fb4;color:#fff;" onclick="copySharedLink()">📋 Copiar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)closeFirebaseSetup();});
+  setTimeout(()=>{
+    const el=document.getElementById('sharedLinkField');
+    if(el) el.value=getShareableLink();
+    /* Auto-generate databaseURL if empty but projectId exists */
+    if(!cfg.databaseURL&&cfg.projectId){
+      autoGenDbUrl();
+    }
+  },50);
+}
+
+function autoGenDbUrl(){
+  const pid=document.getElementById('fb-projectId');
+  const dbUrl=document.getElementById('fb-databaseURL');
+  if(pid&&dbUrl&&pid.value.trim()&&!dbUrl.value.trim()){
+    const auto='https://'+pid.value.trim()+'-default-rtdb.firebaseio.com';
+    dbUrl.value=auto;
+    dbUrl.classList.add('auto-filled');
+    dbUrl.title='Auto-generada. Si no funciona, cámbiala por: https://'+pid.value.trim()+'.firebaseio.com';
+  }
+}
+
+function closeFirebaseSetup(){
+  const m=document.getElementById('firebaseSetupModal');
+  if(m) m.remove();
+}
+
+function applyFirebaseConfig(){
+  const cfg={
+    apiKey:document.getElementById('fb-apiKey').value.trim(),
+    authDomain:document.getElementById('fb-authDomain').value.trim(),
+    databaseURL:document.getElementById('fb-databaseURL').value.trim(),
+    projectId:document.getElementById('fb-projectId').value.trim(),
+    storageBucket:document.getElementById('fb-storageBucket').value.trim(),
+    messagingSenderId:document.getElementById('fb-messagingSenderId').value.trim(),
+    appId:document.getElementById('fb-appId').value.trim()
+  };
+  if(!cfg.apiKey||!cfg.projectId){
+    showToast('API Key y Project ID son obligatorios','warn');
+    return;
+  }
+  /* Auto-generate databaseURL if still empty */
+  if(!cfg.databaseURL&&cfg.projectId){
+    cfg.databaseURL='https://'+cfg.projectId+'-default-rtdb.firebaseio.com';
+    showToast('🔗 Database URL auto-generada: '+cfg.databaseURL,'info');
+  }
+  saveFirebaseConfig(cfg);
+  if(firebaseApp){try{firebaseApp.delete();}catch(e){}}
+  firebaseApp=null;_firebaseListenerAttached=false;firebaseDbRef=null;
+  initFirebase();
+  closeFirebaseSetup();
+  showToast('☁️ Firebase configurado correctamente','success');
+  /* Update shared link field if modal is still open */
+  const el=document.getElementById('sharedLinkField');
+  if(el) el.value=getShareableLink();
+}
+
+function removeFirebaseConfig(){
+  if(!confirm('¿Eliminar la configuración de Firebase? Los datos locales se conservarán.'))return;
+  localStorage.removeItem('firebase_config');
+  if(_firebaseTimeout){clearTimeout(_firebaseTimeout);_firebaseTimeout=null;}
+  if(firebaseDbRef)firebaseDbRef.off();
+  if(firebaseApp){try{firebaseApp.delete();}catch(e){}}
+  firebaseApp=null;firebaseDb=null;firebaseDbRef=null;_firebaseListenerAttached=false;_firebaseDataReceived=false;
+  updateSyncIndicator('offline');
+  closeFirebaseSetup();
+  showToast('Firebase desconectado','info');
+}
+
+function getShareableLink(){
+  const url=new URL(window.location.href);
+  url.searchParams.set('mode','consultor');
+  /* Encode Firebase config into the URL hash so Consultors on other devices can connect */
+  const cfg=getFirebaseConfig();
+  if(cfg){
+    const encoded=encodeFirebaseConfigForUrl(cfg);
+    if(encoded) url.hash='fb='+encoded;
+  }else{
+    url.hash='';
+  }
+  return url.toString();
+}
+
+function copySharedLink(){
+  const link=getShareableLink();
+  const el=document.getElementById('sharedLinkField');
+  if(el) el.value=link;
+  navigator.clipboard.writeText(link).then(()=>{
+    showToast('✅ Enlace copiado — contiene configuración Firebase para Consultores','success');
+  }).catch(()=>{
+    if(el){el.select();document.execCommand('copy');showToast('Enlace copiado','success');}
+  });
+}
+
+/* ===== RENDER ALL ===== */
+function renderAll(){
+  renderVentasKPIs();
+  populateVentasFilters();
+  applyVentasFilters();
+  renderInvKPIs();
+  populateInvFilters();
+  applyInvFilters();
+  renderDevKPIs();
+  populateDevFilters();
+  applyDevFilters();
+  renderFactKPIs();
+  populateFactFilters();
+  applyFactFilters();
+}
+
+/* ===== VENTAS RENDER ===== */
+function renderVentasKPIs(){
+  const total=ventas.reduce((s,r)=>s+toNum(r.total),0);
+  const count=ventas.length;
+  const uniqueClients=new Set(ventas.map(r=>r.cliente).filter(Boolean)).size;
+  const avgSale=count?total/count:0;
+  document.getElementById('ventasKpis').innerHTML=`
+    <div class="kpi blue"><div class="kpi-label">Total Ventas</div><div class="kpi-value">${fmtMoney(total)}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Registros</div><div class="kpi-value">${count}</div></div>
+    <div class="kpi green"><div class="kpi-label">Clientes</div><div class="kpi-value">${uniqueClients}</div></div>
+    <div class="kpi purple"><div class="kpi-label">Promedio</div><div class="kpi-value">${fmtMoney(avgSale)}</div></div>`;
+}
+
+let _vSucFilter='',_vProdFilter='',_vClientFilter='';
+function populateVentasFilters(){
+  const f=document.getElementById('ventasFilters');
+  const prods=[...new Set(ventas.map(r=>r.producto).filter(Boolean))].sort();
+  const clients=[...new Set(ventas.map(r=>r.cliente).filter(Boolean))].sort();
+  f.innerHTML=`
+    <div><label>Sucursal</label><select id="fVSuc" onchange="applyVentasFilters()"><option value="">Todas</option>${_SUC.map(s=>'<option>'+s+'</option>').join('')}</select></div>
+    <div><label>Producto</label><select id="fVProd" onchange="applyVentasFilters()"><option value="">Todos</option>${prods.map(p=>'<option>'+p+'</option>').join('')}</select></div>
+    <div><label>Cliente</label><select id="fVClient" onchange="applyVentasFilters()"><option value="">Todos</option>${clients.map(c=>'<option>'+c+'</option>').join('')}</select></div>
+    <div><label>Buscar</label><input id="fVSearch" placeholder="Buscar..." oninput="applyVentasFilters()"></div>`;
+}
+function applyVentasFilters(){
+  const suc=document.getElementById('fVSuc')?.value||'';
+  const prod=document.getElementById('fVProd')?.value||'';
+  const client=document.getElementById('fVClient')?.value||'';
+  const search=(document.getElementById('fVSearch')?.value||'').toLowerCase();
+  const filtered=ventas.filter(r=>{
+    if(suc&&r.sucursal!==suc)return false;
+    if(prod&&r.producto!==prod)return false;
+    if(client&&r.cliente!==client)return false;
+    if(search&&!Object.values(r).some(v=>(''+v).toLowerCase().includes(search)))return false;
+    return true;
+  });
+  renderVentasCharts(filtered);
+  renderVentasTable(filtered);
+}
+function renderVentasCharts(data){
+  /* By Sucursal */
+  const sucData=_SUC.map(s=>({name:s,value:data.filter(r=>r.sucursal===s).reduce((a,r)=>a+toNum(r.total),0)}));
+  const c1=initChart('chartVentasSuc','Ventas por Sucursal');
+  c1.setOption({tooltip:{trigger:'item',formatter:'{b}: ${c}'},series:[{type:'pie',radius:['35%','65%'],data:sucData,itemStyle:{color:params=>sucursalColors[params.data.name]||'#999'},label:{formatter:'{b}\n${c}'},emphasis:{itemStyle:{shadowBlur:10}}}]});
+  /* By Producto top 10 */
+  const prodMap={};
+  data.forEach(r=>{const p=r.producto||'(sin producto)';prodMap[p]=(prodMap[p]||0)+toNum(r.total);});
+  const topProd=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const c2=initChart('chartVentasProd','Top 10 Productos');
+  c2.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:topProd.map(p=>p[0]),axisLabel:{rotate:30,fontSize:10}},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'bar',data:topProd.map(p=>p[1]),itemStyle:{color:'#1a5fb4'}}],grid:{bottom:80}});
+  /* Trend by month */
+  const monthMap={};
+  data.forEach(r=>{const m=(r.fecha||'').slice(0,7);if(m)monthMap[m]=(monthMap[m]||0)+toNum(r.total);});
+  const months=Object.keys(monthMap).sort();
+  const c3=initChart('chartVentasTrend','Tendencia Mensual');
+  c3.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:months},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'line',data:months.map(m=>monthMap[m]),smooth:true,areaStyle:{opacity:.15},lineStyle:{color:'#1a5fb4'},itemStyle:{color:'#1a5fb4'}}]});
+  /* By Client top 10 */
+  const cliMap={};
+  data.forEach(r=>{const c=r.cliente||'(sin cliente)';cliMap[c]=(cliMap[c]||0)+toNum(r.total);});
+  const topCli=Object.entries(cliMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const c4=initChart('chartVentasClient','Top 10 Clientes');
+  c4.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:topCli.map(c=>c[0]),axisLabel:{rotate:30,fontSize:10}},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'bar',data:topCli.map(c=>c[1]),itemStyle:{color:'#27ae60'}}],grid:{bottom:80}});
+}
+function renderVentasTable(data){
+  const el=document.getElementById('tblVentas');
+  const cols=['folio','fecha','cliente','producto','cantidad','precio','total','sucursal'];
+  const labels={folio:'Folio',fecha:'Fecha',cliente:'Cliente',producto:'Producto',cantidad:'Cant.',precio:'Precio',total:'Total',sucursal:'Sucursal'};
+  let html='<table><thead><tr>'+cols.map(c=>'<th>'+labels[c]+'</th>').join('')+'</tr></thead><tbody>';
+  data.slice(0,200).forEach(r=>{
+    html+='<tr>'+cols.map(c=>{
+      const v=r[c]??'';
+      if(c==='total'||c==='precio') return '<td>'+fmtMoney(v)+'</td>';
+      if(c==='cantidad') return '<td>'+toNum(v)+'</td>';
+      return '<td>'+v+'</td>';
+    }).join('')+'</tr>';
+  });
+  html+='</tbody></table>';
+  if(data.length>200) html+='<p style="font-size:.75rem;color:#888;margin-top:.3rem;">Mostrando 200 de '+data.length+' registros</p>';
+  el.innerHTML=html;
+}
+
+/* ===== INVENTARIO RENDER ===== */
+function renderInvKPIs(){
+  const total=inventario.reduce((s,r)=>s+toNum(r.total||r.valor||0),0);
+  const count=inventario.length;
+  const prods=new Set(inventario.map(r=>r.producto).filter(Boolean)).size;
+  document.getElementById('invKpis').innerHTML=`
+    <div class="kpi blue"><div class="kpi-label">Valor Inventario</div><div class="kpi-value">${fmtMoney(total)}</div></div>
+    <div class="kpi blue"><div class="kpi-label">Registros</div><div class="kpi-value">${count}</div></div>
+    <div class="kpi green"><div class="kpi-label">Productos</div><div class="kpi-value">${prods}</div></div>`;
+}
+function populateInvFilters(){
+  const f=document.getElementById('invFilters');
+  const prods=[...new Set(inventario.map(r=>r.producto).filter(Boolean))].sort();
+  f.innerHTML=`
+    <div><label>Sucursal</label><select id="fISuc" onchange="applyInvFilters()"><option value="">Todas</option>${_SUC.map(s=>'<option>'+s+'</option>').join('')}</select></div>
+    <div><label>Producto</label><select id="fIProd" onchange="applyInvFilters()"><option value="">Todos</option>${prods.map(p=>'<option>'+p+'</option>').join('')}</select></div>
+    <div><label>Buscar</label><input id="fISearch" placeholder="Buscar..." oninput="applyInvFilters()"></div>`;
+}
+function applyInvFilters(){
+  const suc=document.getElementById('fISuc')?.value||'';
+  const prod=document.getElementById('fIProd')?.value||'';
+  const search=(document.getElementById('fISearch')?.value||'').toLowerCase();
+  const filtered=inventario.filter(r=>{
+    if(suc&&r.sucursal!==suc)return false;
+    if(prod&&r.producto!==prod)return false;
+    if(search&&!Object.values(r).some(v=>(''+v).toLowerCase().includes(search)))return false;
+    return true;
+  });
+  renderInvCharts(filtered);
+  renderInvTable(filtered);
+}
+function renderInvCharts(data){
+  const sucData=_SUC.map(s=>({name:s,value:data.filter(r=>r.sucursal===s).reduce((a,r)=>a+toNum(r.total||r.valor||0),0)}));
+  const c1=initChart('chartInvSuc','Inventario por Sucursal');
+  c1.setOption({tooltip:{trigger:'item',formatter:'{b}: ${c}'},series:[{type:'pie',radius:['35%','65%'],data:sucData,itemStyle:{color:params=>sucursalColors[params.data.name]||'#999'},label:{formatter:'{b}\n${c}'}}]});
+  const prodMap={};
+  data.forEach(r=>{const p=r.producto||'(sin producto)';prodMap[p]=(prodMap[p]||0)+toNum(r.total||r.valor||0);});
+  const topProd=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const c2=initChart('chartInvProd','Top 10 Productos');
+  c2.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:topProd.map(p=>p[0]),axisLabel:{rotate:30,fontSize:10}},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'bar',data:topProd.map(p=>p[1]),itemStyle:{color:'#1a5fb4'}}],grid:{bottom:80}});
+}
+function renderInvTable(data){
+  const el=document.getElementById('tblInventario');
+  const cols=['codigo','producto','cantidad','precio','total','sucursal'];
+  const labels={codigo:'Código',producto:'Producto',cantidad:'Cantidad',precio:'Precio',total:'Valor',sucursal:'Sucursal'};
+  let html='<table><thead><tr>'+cols.map(c=>'<th>'+labels[c]+'</th>').join('')+'</tr></thead><tbody>';
+  data.slice(0,200).forEach(r=>{
+    html+='<tr>'+cols.map(c=>{
+      const v=r[c]??'';
+      if(c==='total'||c==='precio') return '<td>'+fmtMoney(v)+'</td>';
+      if(c==='cantidad') return '<td>'+toNum(v)+'</td>';
+      return '<td>'+v+'</td>';
+    }).join('')+'</tr>';
+  });
+  html+='</tbody></table>';
+  if(data.length>200) html+='<p style="font-size:.75rem;color:#888;margin-top:.3rem;">Mostrando 200 de '+data.length+' registros</p>';
+  el.innerHTML=html;
+}
+
+/* ===== DEVOLUCIONES RENDER ===== */
+function renderDevKPIs(){
+  const total=devoluciones.reduce((s,r)=>s+toNum(r.total),0);
+  const count=devoluciones.length;
+  document.getElementById('devKpis').innerHTML=`
+    <div class="kpi orange"><div class="kpi-label">Total Devoluciones</div><div class="kpi-value">${fmtMoney(total)}</div></div>
+    <div class="kpi orange"><div class="kpi-label">Registros</div><div class="kpi-value">${count}</div></div>`;
+}
+function populateDevFilters(){
+  const f=document.getElementById('devFilters');
+  const prods=[...new Set(devoluciones.map(r=>r.producto).filter(Boolean))].sort();
+  f.innerHTML=`
+    <div><label>Sucursal</label><select id="fDSuc" onchange="applyDevFilters()"><option value="">Todas</option>${_SUC.map(s=>'<option>'+s+'</option>').join('')}</select></div>
+    <div><label>Producto</label><select id="fDProd" onchange="applyDevFilters()"><option value="">Todos</option>${prods.map(p=>'<option>'+p+'</option>').join('')}</select></div>
+    <div><label>Buscar</label><input id="fDSearch" placeholder="Buscar..." oninput="applyDevFilters()"></div>`;
+}
+function applyDevFilters(){
+  const suc=document.getElementById('fDSuc')?.value||'';
+  const prod=document.getElementById('fDProd')?.value||'';
+  const search=(document.getElementById('fDSearch')?.value||'').toLowerCase();
+  const filtered=devoluciones.filter(r=>{
+    if(suc&&r.sucursal!==suc)return false;
+    if(prod&&r.producto!==prod)return false;
+    if(search&&!Object.values(r).some(v=>(''+v).toLowerCase().includes(search)))return false;
+    return true;
+  });
+  renderDevCharts(filtered);
+  renderDevTable(filtered);
+}
+function renderDevCharts(data){
+  const sucData=_SUC.map(s=>({name:s,value:data.filter(r=>r.sucursal===s).reduce((a,r)=>a+toNum(r.total),0)}));
+  const c1=initChart('chartDevSuc','Devoluciones por Sucursal');
+  c1.setOption({tooltip:{trigger:'item',formatter:'{b}: ${c}'},series:[{type:'pie',radius:['35%','65%'],data:sucData,itemStyle:{color:params=>sucursalColors[params.data.name]||'#999'},label:{formatter:'{b}\n${c}'}}]});
+  const prodMap={};
+  data.forEach(r=>{const p=r.producto||'(sin producto)';prodMap[p]=(prodMap[p]||0)+toNum(r.total);});
+  const topProd=Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const c2=initChart('chartDevProd','Top 10 Productos Devueltos');
+  c2.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:topProd.map(p=>p[0]),axisLabel:{rotate:30,fontSize:10}},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'bar',data:topProd.map(p=>p[1]),itemStyle:{color:'#e67e22'}}],grid:{bottom:80}});
+}
+function renderDevTable(data){
+  const el=document.getElementById('tblDevoluciones');
+  const cols=['folio','fecha','cliente','producto','cantidad','total','sucursal'];
+  const labels={folio:'Folio',fecha:'Fecha',cliente:'Cliente',producto:'Producto',cantidad:'Cant.',total:'Total',sucursal:'Sucursal'};
+  let html='<table><thead><tr>'+cols.map(c=>'<th>'+labels[c]+'</th>').join('')+'</tr></thead><tbody>';
+  data.slice(0,200).forEach(r=>{
+    html+='<tr>'+cols.map(c=>{
+      const v=r[c]??'';
+      if(c==='total') return '<td>'+fmtMoney(v)+'</td>';
+      if(c==='cantidad') return '<td>'+toNum(v)+'</td>';
+      return '<td>'+v+'</td>';
+    }).join('')+'</tr>';
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+/* ===== FACTURACION RENDER ===== */
+function renderFactKPIs(){
+  const total=facturacion.reduce((s,r)=>s+toNum(r.total),0);
+  const count=facturacion.length;
+  document.getElementById('factKpis').innerHTML=`
+    <div class="kpi orange"><div class="kpi-label">Total Facturado</div><div class="kpi-value">${fmtMoney(total)}</div></div>
+    <div class="kpi orange"><div class="kpi-label">Facturas</div><div class="kpi-value">${count}</div></div>`;
+}
+function populateFactFilters(){
+  const f=document.getElementById('factFilters');
+  const weeks=[...new Set(facturacion.map(r=>(r.fecha||'').slice(0,7))).filter(Boolean)].sort();
+  f.innerHTML=`
+    <div><label>Sucursal</label><select id="fFSuc" onchange="applyFactFilters()"><option value="">Todas</option>${_SUC.map(s=>'<option>'+s+'</option>').join('')}</select></div>
+    <div><label>Mes</label><select id="fFWeek" onchange="applyFactFilters()"><option value="">Todos</option>${weeks.map(w=>'<option>'+w+'</option>').join('')}</select></div>
+    <div><label>Buscar</label><input id="fFSearch" placeholder="Buscar..." oninput="applyFactFilters()"></div>`;
+}
+function applyFactFilters(){
+  const suc=document.getElementById('fFSuc')?.value||'';
+  const week=document.getElementById('fFWeek')?.value||'';
+  const search=(document.getElementById('fFSearch')?.value||'').toLowerCase();
+  const filtered=facturacion.filter(r=>{
+    if(suc&&r.sucursal!==suc)return false;
+    if(week&&!(r.fecha||'').startsWith(week))return false;
+    if(search&&!Object.values(r).some(v=>(''+v).toLowerCase().includes(search)))return false;
+    return true;
+  });
+  renderFactCharts(filtered);
+  renderFactTable(filtered);
+}
+function renderFactCharts(data){
+  const sucData=_SUC.map(s=>({name:s,value:data.filter(r=>r.sucursal===s).reduce((a,r)=>a+toNum(r.total),0)}));
+  const c1=initChart('chartFactSuc','Facturación por Sucursal');
+  c1.setOption({tooltip:{trigger:'item',formatter:'{b}: ${c}'},series:[{type:'pie',radius:['35%','65%'],data:sucData,itemStyle:{color:params=>sucursalColors[params.data.name]||'#999'},label:{formatter:'{b}\n${c}'}}]});
+  const monthMap={};
+  data.forEach(r=>{const m=(r.fecha||'').slice(0,7);if(m)monthMap[m]=(monthMap[m]||0)+toNum(r.total);});
+  const months=Object.keys(monthMap).sort();
+  const c2=initChart('chartFactTrend','Tendencia de Facturación');
+  c2.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:months},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'line',data:months.map(m=>monthMap[m]),smooth:true,areaStyle:{opacity:.15},lineStyle:{color:'#e67e22'},itemStyle:{color:'#e67e22'}}]});
+}
+function renderFactTable(data){
+  const el=document.getElementById('tblFacturacion');
+  const cols=['folio','fecha','cliente','rfc','total','sucursal'];
+  const labels={folio:'Folio',fecha:'Fecha',cliente:'Cliente',rfc:'RFC',total:'Total',sucursal:'Sucursal'};
+  let html='<table><thead><tr>'+cols.map(c=>'<th>'+labels[c]+'</th>').join('')+'</tr></thead><tbody>';
+  data.slice(0,200).forEach(r=>{
+    html+='<tr>'+cols.map(c=>{
+      const v=r[c]??'';
+      if(c==='total') return '<td>'+fmtMoney(v)+'</td>';
+      return '<td>'+v+'</td>';
+    }).join('')+'</tr>';
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+
+/* ===== CHART HELPER ===== */
+function initChart(containerId,title){
+  const el=document.getElementById(containerId);
+  if(!el)return null;
+  if(_charts[containerId]){_charts[containerId].dispose();}
+  _charts[containerId]=echarts.init(el);
+  /* Set title as inner h3 text */
+  const h3=el.querySelector('h3');
+  if(!h3){const t=document.createElement('h3');t.textContent=title;el.insertBefore(t,el.firstChild);}
+  return _charts[containerId];
+}
+
+/* ===== WINDOW RESIZE ===== */
+window.addEventListener('resize',()=>{
+  Object.values(_charts).forEach(c=>{try{c.resize();}catch(e){}});
+});
+
+/* ===== INIT ON LOAD ===== */
+window.addEventListener('DOMContentLoaded',()=>{
+  initAccessControl();
+});
+</script>
+</body>
 </html>
