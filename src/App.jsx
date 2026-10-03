@@ -9,6 +9,7 @@ import Productos from './Productos'
 import Embarques from './Embarques'
 import Inventario from './Inventario'
 import Produccion from './Produccion'
+import Ventas from './Ventas'
 
 const VISTAS = [
   { id: 'dashboard', label: 'Dashboard', Componente: Dashboard },
@@ -18,6 +19,7 @@ const VISTAS = [
   { id: 'embarques', label: 'Embarques', Componente: Embarques },
   { id: 'inventario', label: 'Inventario', Componente: Inventario },
   { id: 'produccion', label: 'Produccion', Componente: Produccion },
+  { id: 'ventas', label: 'Ventas 2026', Componente: Ventas },
 ]
 
 function botonEstilo(activo) {
