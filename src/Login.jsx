@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { supabase } from './supabaseClient'
 
 const inputStyle = {
-  width: '100%', fontSize: '14px', border: '1px solid #ddd8cc', borderRadius: '8px',
-  padding: '10px 12px', background: '#FAF6EE', color: '#3A3020', outline: 'none', marginBottom: '14px',
+  width: '100%', fontSize: '14px', border: '1px solid #DCE5F3', borderRadius: '8px',
+  padding: '10px 12px', background: '#fff', color: '#0F1F3D', outline: 'none', marginBottom: '14px',
   boxSizing: 'border-box'
 }
 
@@ -30,27 +30,27 @@ function Login() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F5F0E8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
-      <form onSubmit={entrar} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', padding: '2rem', width: '100%', maxWidth: '380px' }}>
+    <div style={{ minHeight: '100vh', background: '#F2F6FC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
+      <form onSubmit={entrar} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #DCE5F3', padding: '2rem', width: '100%', maxWidth: '380px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1.5rem' }}>
-          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#C8860A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 500 }}>MC</div>
+          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#D7263D', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 500 }}>MC</div>
           <div>
-            <div style={{ color: '#1A3A2A', fontWeight: 500, fontSize: '16px' }}>Maquiladora de Cocula</div>
-            <div style={{ color: '#7A7060', fontSize: '11px', letterSpacing: '1px', textTransform: 'uppercase' }}>Iniciar sesion</div>
+            <div style={{ color: '#0B2A5B', fontWeight: 500, fontSize: '16px' }}>Maquiladora de Cocula</div>
+            <div style={{ color: '#5A6B88', fontSize: '11px', letterSpacing: '1px', textTransform: 'uppercase' }}>Iniciar sesion</div>
           </div>
         </div>
 
-        <label style={{ fontSize: '11px', color: '#7A7060', display: 'block', marginBottom: '4px', fontWeight: 500, textTransform: 'uppercase' }}>Correo</label>
+        <label style={{ fontSize: '11px', color: '#5A6B88', display: 'block', marginBottom: '4px', fontWeight: 500, textTransform: 'uppercase' }}>Correo</label>
         <input type="email" required autoComplete="username" style={inputStyle} value={email} onChange={function (e) { setEmail(e.target.value) }} />
 
-        <label style={{ fontSize: '11px', color: '#7A7060', display: 'block', marginBottom: '4px', fontWeight: 500, textTransform: 'uppercase' }}>Contraseña</label>
+        <label style={{ fontSize: '11px', color: '#5A6B88', display: 'block', marginBottom: '4px', fontWeight: 500, textTransform: 'uppercase' }}>Contraseña</label>
         <input type="password" required autoComplete="current-password" style={inputStyle} value={password} onChange={function (e) { setPassword(e.target.value) }} />
 
         {error && (
-          <div role="alert" style={{ background: '#FFE0DB', color: '#C0321A', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', marginBottom: '14px' }}>{error}</div>
+          <div role="alert" style={{ background: '#FDE7EA', color: '#B01E32', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', marginBottom: '14px' }}>{error}</div>
         )}
 
-        <button type="submit" disabled={entrando} style={{ width: '100%', fontSize: '14px', padding: '10px', borderRadius: '8px', border: 'none', background: '#1A3A2A', color: '#F0C84A', cursor: 'pointer', fontWeight: 500, opacity: entrando ? 0.6 : 1 }}>
+        <button type="submit" disabled={entrando} style={{ width: '100%', fontSize: '14px', padding: '10px', borderRadius: '8px', border: 'none', background: '#0B2A5B', color: '#fff', cursor: 'pointer', fontWeight: 500, opacity: entrando ? 0.6 : 1 }}>
           {entrando ? 'Entrando...' : 'Entrar'}
         </button>
       </form>
