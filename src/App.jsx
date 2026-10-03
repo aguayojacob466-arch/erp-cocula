@@ -12,6 +12,7 @@ import Produccion from './Produccion'
 import Ventas from './Ventas'
 
 const VISTAS = [
+  { id: 'ventas', label: 'Ventas 2026', Componente: Ventas },
   { id: 'dashboard', label: 'Dashboard', Componente: Dashboard },
   { id: 'clientes', label: 'Clientes', Componente: Clientes },
   { id: 'productos', label: 'Productos', Componente: Productos },
@@ -19,7 +20,6 @@ const VISTAS = [
   { id: 'embarques', label: 'Embarques', Componente: Embarques },
   { id: 'inventario', label: 'Inventario', Componente: Inventario },
   { id: 'produccion', label: 'Produccion', Componente: Produccion },
-  { id: 'ventas', label: 'Ventas 2026', Componente: Ventas },
 ]
 
 function botonEstilo(activo) {
@@ -31,7 +31,7 @@ function botonEstilo(activo) {
 }
 
 function App() {
-  const [vista, setVista] = useState('dashboard')
+  const [vista, setVista] = useState('ventas')
   const [session, setSession] = useState(undefined) // undefined = aun comprobando
   const [rol, setRol] = useState(null)
 
@@ -59,7 +59,7 @@ function App() {
   async function cerrarSesion() {
     await supabase.auth.signOut()
     setRol(null)
-    setVista('dashboard')
+    setVista('ventas')
   }
 
   if (session === undefined) {

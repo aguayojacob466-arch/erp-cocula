@@ -6,8 +6,6 @@
 <title>Dashboard de Ventas 2026</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
 :root{
@@ -181,13 +179,10 @@ input.cell-edit:focus{outline:2px solid var(--primary);border-radius:3px;backgro
 
 <!-- Top Bar -->
 <div class="top-bar" id="topBar" style="display:none;">
-  <h1>📊 Dashboard de Ventas 2026 <span class="role-badge" id="roleBadge"></span> <span class="sync-indicator" id="syncIndicator"><span class="sync-dot offline" id="syncDot"></span> <span id="syncLabel">Offline</span></span></h1>
+  <h1>📊 Dashboard de Ventas 2026 <span class="role-badge" id="roleBadge"></span> <span class="sync-indicator" id="syncIndicator"><span class="sync-dot online" id="syncDot"></span> <span id="syncLabel">Datos locales</span></span></h1>
   <div class="btn-row">
     <label class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;cursor:pointer;">📂 Importar Excel <input type="file" accept=".xlsx,.xls,.csv" multiple onchange="importFiles(this.files)" style="display:none;"></label>
     <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="exportAllXLSX()">📥 Exportar XLSX</button>
-    <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="forceFirebaseSync()">🔄 Sincronizar</button>
-    <button class="btn btn-sm" id="btnFirebase" style="background:rgba(255,255,255,.15);color:#fff;" onclick="openFirebaseSetup()">☁️ Firebase</button>
-    <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="copySharedLink()">🔗 Enlace Consultor</button>
   </div>
 </div>
 
@@ -246,6 +241,10 @@ input.cell-edit:focus{outline:2px solid var(--primary);border-radius:3px;backgro
     <div class="charts-row">
       <div class="chart-box" id="chartFactSuc"></div>
       <div class="chart-box" id="chartFactTrend"></div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-box" id="chartFactTop" style="height:440px"></div>
+      <div class="chart-box" id="chartFactCli" style="height:440px"></div>
     </div>
     <div class="card"><h2>📋 Detalle de Facturación</h2><div class="table-wrap" id="tblFacturacion"></div></div>
   </div>
@@ -345,23 +344,9 @@ function initAccessControl(){
   /* Consultor shared link — NO PASSWORD NEEDED */
   const urlParams=new URLSearchParams(window.location.search);
   if(urlParams.get('mode')==='consultor'){
-    /* *** CRITICAL FIX: Extract Firebase config from URL hash and save to localStorage *** */
-    const fbFromUrl=extractFirebaseConfigFromUrl();
-    if(fbFromUrl){
-      saveFirebaseConfig(fbFromUrl);
-      console.log('Firebase config recibido desde enlace compartido — guardado en localStorage');
-      showToast('☁️ Configuración Firebase recibida desde el enlace','success');
-    }
     sessionStorage.setItem('promaquila_auth','consultor');
     CURRENT_ROLE='consultor';
     enterDashboard();
-    /* If Firebase listener doesn't fire within 10 seconds, warn user */
-    _firebaseTimeout=setTimeout(()=>{
-      if(!_firebaseDataReceived){
-        showToast('⚠️ No se recibieron datos de la nube en 10s. Verifica Firebase.','warn');
-        updateSyncIndicator('offline');
-      }
-    },10000);
     return;
   }
   if(isAccessSetUp()){
@@ -379,10 +364,8 @@ function initAccessControl(){
 
 function applyRolePermissions(){
   if(CURRENT_ROLE==='consultor'){
-    document.getElementById('btnFirebase').style.display='none';
     document.getElementById('mainContent').classList.add('consultor-readonly');
   }else{
-    document.getElementById('btnFirebase').style.display='';
     document.getElementById('mainContent').classList.remove('consultor-readonly');
   }
 }
@@ -422,7 +405,7 @@ function dupKey(r,type){
   if(type==='ventas') return (r.folio||'')+'|'+(r.id||'')+'|'+(r.fecha||'')+'|'+(r.producto||'')+'|'+(r.cliente||'');
   if(type==='inventario') return (r.codigo||'')+'|'+(r.producto||'')+'|'+(r.sucursal||'');
   if(type==='devoluciones') return (r.folio||'')+'|'+(r.fecha||'')+'|'+(r.producto||'')+'|'+(r.cliente||'');
-  if(type==='facturacion') return (r.folio||'')+'|'+(r.fecha||'')+'|'+(r.total||'')+'|'+(r.sucursal||'');
+  if(type==='facturacion') return [r.folio,r.fecha,r.codigo_producto,r.cantidad,r.precio,r.total,r.sucursal].map(v=>v===undefined||v===null?'':v).join('|');
   return JSON.stringify(r);
 }
 
@@ -451,6 +434,9 @@ function importFiles(files){
           const ws=wb.Sheets[sheetName];
           const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
           if(raw.length<4)continue;
+          /* Reporte CONTPAQ "Análisis de Precios por Cliente" = facturación por línea */
+          const cp=parseContpaqFacturacion(raw);
+          if(cp){ totalAdded+=mergeData(facturacion,cp,'facturacion'); continue; }
           /* Detect type by header row */
           const headers=raw[2]||raw[0]||[];
           const hLower=headers.map(h=>(h+'').toLowerCase().trim());
@@ -520,6 +506,48 @@ function importFiles(files){
   }
 }
 
+/* Lee el reporte de CONTPAQ (una fila por producto facturado). Solo toma las columnas
+   hasta "Importe": lo que este a la derecha (resumen manual) se ignora. */
+function _norm(s){return (s+'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();}
+function sucursalDeConcepto(c){
+  let s=(c+'').replace(/^\s*factura\s+cfdi\s*[\d.]*\s*/i,'').trim();
+  if(!s)return 'Cocula';
+  if(/^cce$/i.test(s))return 'Exportación (CCE)';
+  return s;
+}
+function parseContpaqFacturacion(raw){
+  let h=-1;
+  for(let i=0;i<Math.min(raw.length,15);i++){
+    const l=(raw[i]||[]).map(_norm);
+    if(l.includes('nombre(cliente)')&&l.includes('nombre(producto)')&&l.includes('importe')){h=i;break;}
+  }
+  if(h<0)return null;
+  const hd=raw[h].map(_norm);
+  const iCodP=hd.indexOf('codigo');
+  const iCodC=hd.indexOf('codigo',iCodP+1);
+  const ix={
+    prod:hd.indexOf('nombre(producto)'), cli:hd.indexOf('nombre(cliente)'), fecha:hd.indexOf('fecha'),
+    folio:hd.indexOf('folio y serie'), dias:hd.indexOf('dias de credito'), alm:hd.indexOf('almacen'),
+    conc:hd.indexOf('concepto'), mon:hd.indexOf('moneda'), precio:hd.indexOf('precio unitario'),
+    cant:hd.indexOf('cantidad'), desc:hd.indexOf('descuento'), imp:hd.indexOf('importe')
+  };
+  const t=v=>(v===undefined||v===null?'':v+'').trim();
+  const out=[];
+  for(const r of raw.slice(h+1)){
+    if(t(r[ix.prod])===''&&t(r[ix.cli])==='')continue;
+    out.push({
+      folio:t(r[ix.folio]), fecha:fmtDate(r[ix.fecha]),
+      cliente:t(r[ix.cli]), cod_cliente:iCodC>=0?t(r[iCodC]):'',
+      codigo_producto:iCodP>=0?t(r[iCodP]):'', producto:t(r[ix.prod]),
+      concepto:t(r[ix.conc]), sucursal:sucursalDeConcepto(r[ix.conc]),
+      almacen:t(r[ix.alm]), moneda:t(r[ix.mon]), dias_credito:toNum(r[ix.dias]),
+      precio:toNum(r[ix.precio]), cantidad:toNum(r[ix.cant]),
+      descuento:toNum(r[ix.desc]), total:toNum(r[ix.imp])
+    });
+  }
+  return out;
+}
+
 function toNum(v){
   if(v===undefined||v===null||v==='')return 0;
   const n=parseFloat((''+v).replace(/[$,]/g,''));
@@ -527,7 +555,7 @@ function toNum(v){
 }
 function fmtDate(v){
   if(!v)return '';
-  if(v instanceof Date){const y=v.getFullYear(),m=''+(v.getMonth()+1).padStart(2,'0'),d=''+v.getDate().padStart(2,'0');return y+'-'+m+'-'+d;}
+  if(v instanceof Date){const y=v.getFullYear(),m=String(v.getMonth()+1).padStart(2,'0'),d=String(v.getDate()).padStart(2,'0');return y+'-'+m+'-'+d;}
   const s=''+v;
   /* Try dd/mm/yyyy */
   const m1=s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
@@ -596,7 +624,12 @@ function ensureDatabaseURL(cfg){
   return cfg;
 }
 
+/* Firebase desactivado: los datos viven solo en este navegador (localStorage).
+   Se importan desde Excel y se respaldan con "Exportar XLSX". */
 function initFirebase(){
+  updateSyncIndicator('online');
+}
+function _initFirebaseDesactivado(){
   firebaseConfig=getFirebaseConfig();
   if(!firebaseConfig){
     updateSyncIndicator('offline');
@@ -711,7 +744,7 @@ function updateSyncIndicator(state){
   const dot=document.getElementById('syncDot');
   const lbl=document.getElementById('syncLabel');
   dot.className='sync-dot '+state;
-  const labels={offline:'Offline',syncing:'Sincronizando...',online:'En línea',error:'Error'};
+  const labels={offline:'Datos locales',syncing:'Sincronizando...',online:'Datos locales',error:'Error'};
   lbl.textContent=labels[state]||state;
 }
 
@@ -1058,57 +1091,92 @@ function renderDevTable(data){
 }
 
 /* ===== FACTURACION RENDER ===== */
-function renderFactKPIs(){
-  const total=facturacion.reduce((s,r)=>s+toNum(r.total),0);
-  const count=facturacion.length;
+const _PAL=['#1a5fb4','#f39c12','#27ae60','#9b59b6','#e74c3c','#16a085','#7f8c8d','#d35400'];
+function esc(v){return (v===undefined||v===null?'':v+'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function factSucursales(){return [...new Set(facturacion.map(r=>r.sucursal).filter(Boolean))].sort();}
+function colorSuc(n){return sucursalColors[n]||_PAL[Math.max(0,factSucursales().indexOf(n))%_PAL.length];}
+function fmtCompact(v){const a=Math.abs(v);return a>=1e6?'$'+(v/1e6).toFixed(a>=1e7?0:1)+'M':a>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v;}
+function sumBy(data,keyFn,valFn){const m={};data.forEach(r=>{const k=keyFn(r);if(k===''||k===undefined)return;m[k]=(m[k]||0)+valFn(r);});return m;}
+function topN(map,n){return Object.entries(map).sort((x,y)=>y[1]-x[1]).slice(0,n);}
+
+function renderFactKPIs(data){
+  data=data||facturacion;
+  const total=data.reduce((s,r)=>s+toNum(r.total),0);
+  const folios=new Set(data.map(r=>r.folio).filter(Boolean)).size||data.length;
+  const clientes=new Set(data.map(r=>r.cliente).filter(Boolean)).size;
+  const piezas=data.reduce((s,r)=>s+toNum(r.cantidad),0);
+  const desc=data.reduce((s,r)=>s+toNum(r.descuento),0);
+  const ticket=folios?total/folios:0;
   document.getElementById('factKpis').innerHTML=`
     <div class="kpi orange"><div class="kpi-label">Total Facturado</div><div class="kpi-value">${fmtMoney(total)}</div></div>
-    <div class="kpi orange"><div class="kpi-label">Facturas</div><div class="kpi-value">${count}</div></div>`;
+    <div class="kpi orange"><div class="kpi-label">Facturas</div><div class="kpi-value">${folios.toLocaleString('es-MX')}</div><div class="kpi-sub">${data.length.toLocaleString('es-MX')} líneas</div></div>
+    <div class="kpi orange"><div class="kpi-label">Clientes</div><div class="kpi-value">${clientes}</div></div>
+    <div class="kpi orange"><div class="kpi-label">Cajas / piezas</div><div class="kpi-value">${piezas.toLocaleString('es-MX')}</div></div>
+    <div class="kpi orange"><div class="kpi-label">Ticket promedio</div><div class="kpi-value">${fmtMoney(ticket)}</div><div class="kpi-sub">por factura</div></div>
+    <div class="kpi orange"><div class="kpi-label">Descuentos</div><div class="kpi-value">${fmtMoney(desc)}</div></div>`;
 }
 function populateFactFilters(){
   const f=document.getElementById('factFilters');
-  const weeks=[...new Set(facturacion.map(r=>(r.fecha||'').slice(0,7))).filter(Boolean)].sort();
+  const meses=[...new Set(facturacion.map(r=>(r.fecha||'').slice(0,7))).filter(Boolean)].sort();
+  const clientes=[...new Set(facturacion.map(r=>r.cliente).filter(Boolean))].sort();
   f.innerHTML=`
-    <div><label>Sucursal</label><select id="fFSuc" onchange="applyFactFilters()"><option value="">Todas</option>${_SUC.map(s=>'<option>'+s+'</option>').join('')}</select></div>
-    <div><label>Mes</label><select id="fFWeek" onchange="applyFactFilters()"><option value="">Todos</option>${weeks.map(w=>'<option>'+w+'</option>').join('')}</select></div>
-    <div><label>Buscar</label><input id="fFSearch" placeholder="Buscar..." oninput="applyFactFilters()"></div>`;
+    <div><label>Sucursal</label><select id="fFSuc" onchange="applyFactFilters()"><option value="">Todas</option>${factSucursales().map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('')}</select></div>
+    <div><label>Cliente</label><select id="fFCli" onchange="applyFactFilters()"><option value="">Todos</option>${clientes.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('')}</select></div>
+    <div><label>Mes</label><select id="fFWeek" onchange="applyFactFilters()"><option value="">Todos</option>${meses.map(w=>'<option>'+w+'</option>').join('')}</select></div>
+    <div><label>Buscar</label><input id="fFSearch" placeholder="Folio, producto..." oninput="applyFactFilters()"></div>`;
 }
 function applyFactFilters(){
   const suc=document.getElementById('fFSuc')?.value||'';
-  const week=document.getElementById('fFWeek')?.value||'';
-  const search=(document.getElementById('fFSearch')?.value||'').toLowerCase();
+  const cli=document.getElementById('fFCli')?.value||'';
+  const mes=document.getElementById('fFWeek')?.value||'';
+  const q=(document.getElementById('fFSearch')?.value||'').toLowerCase();
   const filtered=facturacion.filter(r=>{
     if(suc&&r.sucursal!==suc)return false;
-    if(week&&!(r.fecha||'').startsWith(week))return false;
-    if(search&&!Object.values(r).some(v=>(''+v).toLowerCase().includes(search)))return false;
+    if(cli&&r.cliente!==cli)return false;
+    if(mes&&!(r.fecha||'').startsWith(mes))return false;
+    if(q&&!Object.values(r).some(v=>(''+v).toLowerCase().includes(q)))return false;
     return true;
   });
+  renderFactKPIs(filtered);
   renderFactCharts(filtered);
   renderFactTable(filtered);
 }
+function barH(id,titulo,pares,color){
+  const c=initChart(id,titulo); if(!c)return;
+  const datos=pares.slice().reverse();
+  c.setOption({
+    grid:{left:10,right:90,top:36,bottom:10,containLabel:true},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>esc(p[0].name)+'<br><b>'+fmtMoney(p[0].value)+'</b>'},
+    xAxis:{type:'value',axisLabel:{formatter:v=>fmtCompact(v)}},
+    yAxis:{type:'category',data:datos.map(d=>d[0]),axisLabel:{width:200,overflow:'truncate',fontSize:11}},
+    series:[{type:'bar',data:datos.map(d=>d[1]),itemStyle:{color:color,borderRadius:[0,4,4,0]},label:{show:true,position:'right',formatter:p=>fmtCompact(p.value),fontSize:11}}]
+  });
+}
 function renderFactCharts(data){
-  const sucData=_SUC.map(s=>({name:s,value:data.filter(r=>r.sucursal===s).reduce((a,r)=>a+toNum(r.total),0)}));
+  const sucMap=sumBy(data,r=>r.sucursal,r=>toNum(r.total));
+  const sucData=Object.entries(sucMap).map(([name,value])=>({name,value}));
   const c1=initChart('chartFactSuc','Facturación por Sucursal');
-  c1.setOption({tooltip:{trigger:'item',formatter:'{b}: ${c}'},series:[{type:'pie',radius:['35%','65%'],data:sucData,itemStyle:{color:params=>sucursalColors[params.data.name]||'#999'},label:{formatter:'{b}\n${c}'}}]});
-  const monthMap={};
-  data.forEach(r=>{const m=(r.fecha||'').slice(0,7);if(m)monthMap[m]=(monthMap[m]||0)+toNum(r.total);});
-  const months=Object.keys(monthMap).sort();
-  const c2=initChart('chartFactTrend','Tendencia de Facturación');
-  c2.setOption({tooltip:{trigger:'axis'},xAxis:{type:'category',data:months},yAxis:{type:'value',axisLabel:{formatter:'${value}'}},series:[{type:'line',data:months.map(m=>monthMap[m]),smooth:true,areaStyle:{opacity:.15},lineStyle:{color:'#e67e22'},itemStyle:{color:'#e67e22'}}]});
+  if(c1)c1.setOption({tooltip:{trigger:'item',formatter:p=>esc(p.name)+'<br><b>'+fmtMoney(p.value)+'</b> ('+p.percent+'%)'},series:[{type:'pie',radius:['35%','62%'],center:['50%','58%'],data:sucData,itemStyle:{color:p=>colorSuc(p.data.name)},label:{formatter:p=>p.name+'\n'+fmtCompact(p.value)}}]});
+
+  const diaMap=sumBy(data,r=>r.fecha,r=>toNum(r.total));
+  const dias=Object.keys(diaMap).sort();
+  const c2=initChart('chartFactTrend','Facturación por día');
+  if(c2)c2.setOption({tooltip:{trigger:'axis',formatter:p=>p[0].axisValue+'<br><b>'+fmtMoney(p[0].value)+'</b>'},grid:{left:10,right:20,top:44,bottom:10,containLabel:true},xAxis:{type:'category',data:dias,axisLabel:{formatter:d=>d.slice(5)}},yAxis:{type:'value',axisLabel:{formatter:v=>fmtCompact(v)}},series:[{type:'line',data:dias.map(d=>diaMap[d]),smooth:true,areaStyle:{opacity:.15},lineStyle:{color:'#e67e22'},itemStyle:{color:'#e67e22'}}]});
+
+  barH('chartFactTop','Top 10 productos por importe',topN(sumBy(data,r=>r.producto,r=>toNum(r.total)),10),'#e67e22');
+  barH('chartFactCli','Top 10 clientes por importe',topN(sumBy(data,r=>r.cliente,r=>toNum(r.total)),10),'#1a5fb4');
 }
 function renderFactTable(data){
   const el=document.getElementById('tblFacturacion');
-  const cols=['folio','fecha','cliente','rfc','total','sucursal'];
-  const labels={folio:'Folio',fecha:'Fecha',cliente:'Cliente',rfc:'RFC',total:'Total',sucursal:'Sucursal'};
-  let html='<table><thead><tr>'+cols.map(c=>'<th>'+labels[c]+'</th>').join('')+'</tr></thead><tbody>';
-  data.slice(0,200).forEach(r=>{
-    html+='<tr>'+cols.map(c=>{
-      const v=r[c]??'';
-      if(c==='total') return '<td>'+fmtMoney(v)+'</td>';
-      return '<td>'+v+'</td>';
-    }).join('')+'</tr>';
+  const orden=data.slice().sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(a.folio||'').localeCompare(b.folio||''));
+  const MAX=300;
+  let html='<table><thead><tr><th>Fecha</th><th>Folio</th><th>Cliente</th><th>Producto</th><th>Cant.</th><th>Precio</th><th>Desc.</th><th>Importe</th><th>Sucursal</th></tr></thead><tbody>';
+  orden.slice(0,MAX).forEach(r=>{
+    html+='<tr><td>'+esc(r.fecha)+'</td><td>'+esc(r.folio)+'</td><td>'+esc(r.cliente)+'</td><td>'+esc(r.producto)+'</td><td>'+toNum(r.cantidad).toLocaleString('es-MX')+'</td><td>'+fmtMoney(r.precio)+'</td><td>'+fmtMoney(r.descuento)+'</td><td>'+fmtMoney(r.total)+'</td><td>'+esc(r.sucursal)+'</td></tr>';
   });
   html+='</tbody></table>';
+  if(!orden.length)html='<p style="padding:1rem;color:var(--text3)">Sin facturas. Usa <b>Importar Excel</b> con el reporte de CONTPAQ.</p>';
+  else if(orden.length>MAX)html+='<p style="padding:.5rem 1rem;color:var(--text3);font-size:.8rem">Mostrando '+MAX+' de '+orden.length+' líneas. Usa los filtros para acotar.</p>';
   el.innerHTML=html;
 }
 
