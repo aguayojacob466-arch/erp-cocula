@@ -52,7 +52,7 @@ function App() {
 
   return (
     <RolContext.Provider value={{ esAdmin: rol === 'admin' }}>
-      <div style={{ background: '#0B2A5B', height: '44px', boxSizing: 'border-box', padding: '0 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: '#A9C3EC' }}>
+      <div style={{ background: '#0B2A5B', height: '44px', boxSizing: 'border-box', padding: '0 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: '#A9C3EC' }}>
         <span style={{ color: '#fff', fontWeight: 700, letterSpacing: '0.2px' }}>Maquiladora de Cocula</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span>{session.user.email}{rol === 'admin' ? ' (admin)' : ''}</span>
