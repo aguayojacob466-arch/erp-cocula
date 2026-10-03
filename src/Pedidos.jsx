@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { hoy, primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
 import { IconClipboardList, IconPlus, IconX, IconCheck, IconTrash, IconChartBar, IconUsers, IconBox } from '@tabler/icons-react'
 
 const COLORES = {
@@ -42,6 +44,7 @@ function Pedidos() {
   const [pedidos, setPedidos] = useState([])
   const [pedidoItems, setPedidoItems] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [tab, setTab] = useState('pedidos')
 
@@ -53,10 +56,6 @@ function Pedidos() {
   const [fecha, setFecha] = useState('')
   const [fechaEntrega, setFechaEntrega] = useState('')
   const [guardando, setGuardando] = useState(false)
-
-  useEffect(function () {
-    cargarTodo()
-  }, [])
 
   async function cargarTodo() {
     const resCl = await supabase.from('clientes').select('*')
@@ -73,8 +72,13 @@ function Pedidos() {
       .select('*, productos(sku, nombre), pedidos(cliente_id, fecha, clientes(nombre, nombre_comercial, color))')
     setPedidoItems(resItems.data || [])
 
+    setErrorCarga(primerError(resCl, resPed, resItems))
     setCargando(false)
   }
+
+  useEffect(function () {
+    cargarTodo()
+  }, [])
 
   function abrirNuevoPedido() {
     setClienteId('')
@@ -82,7 +86,7 @@ function Pedidos() {
     setItems([])
     setFolio('PED-' + Date.now().toString().slice(-6))
     setOcCliente('')
-    setFecha(new Date().toISOString().split('T')[0])
+    setFecha(hoy())
     setFechaEntrega('')
     setModalAbierto(true)
   }
@@ -147,15 +151,26 @@ function Pedidos() {
       alert('Agrega al menos un producto')
       return
     }
+    for (let i = 0; i < items.length; i++) {
+      if (!(Number(items[i].cantidad) > 0)) {
+        alert('La cantidad de cada producto debe ser mayor a 0')
+        return
+      }
+      if (items[i].precio === '' || !(Number(items[i].precio) >= 0)) {
+        alert('El precio de cada producto debe ser un numero valido')
+        return
+      }
+    }
     setGuardando(true)
     const totales = calcularTotales()
     const cliente = clientes.find(function (c) { return c.id === clienteId })
+    let pedidoCreadoId = null
 
     try {
       const insertPedido = await supabase
         .from('pedidos')
         .insert([{
-          folio: folio, cliente_id: clienteId, oc_cliente: ocCliente, fecha: fecha, fecha_entrega: fechaEntrega,
+          folio: folio, cliente_id: clienteId, oc_cliente: ocCliente, fecha: fecha, fecha_entrega: fechaEntrega || null,
           subtotal: totales.subtotal, descuento_logistica: totales.descuento, total: totales.total,
           factoraje: cliente ? cliente.factoraje : false, etapa: 'oc'
         }])
@@ -163,6 +178,7 @@ function Pedidos() {
         .single()
 
       if (insertPedido.error) throw insertPedido.error
+      pedidoCreadoId = insertPedido.data.id
 
       const itemsParaGuardar = items.map(function (it) {
         return { pedido_id: insertPedido.data.id, producto_id: it.producto_id, cantidad: it.cantidad, precio: it.precio }
@@ -174,6 +190,8 @@ function Pedidos() {
       setModalAbierto(false)
       cargarTodo()
     } catch (err) {
+      // Si fallaron los items, no dejar un pedido vacio guardado.
+      if (pedidoCreadoId) await supabase.from('pedidos').delete().eq('id', pedidoCreadoId)
       alert('Error al guardar: ' + err.message)
     } finally {
       setGuardando(false)
@@ -188,7 +206,11 @@ function Pedidos() {
     if (idx === ETAPAS.length - 1 || idx === -1) return
     const nuevaEtapa = ETAPAS[idx + 1].id
     const resp = await supabase.from('pedidos').update({ etapa: nuevaEtapa }).eq('id', pedido.id)
-    if (!resp.error) {
+    if (resp.error) {
+      window.alert('No se pudo avanzar la etapa: ' + resp.error.message)
+      return
+    }
+    {
       setPedidos(function (prev) {
         return prev.map(function (p) {
           if (p.id === pedido.id) return Object.assign({}, p, { etapa: nuevaEtapa })
@@ -202,7 +224,11 @@ function Pedidos() {
     const ok = window.confirm('¿Eliminar el pedido ' + pedido.folio + '?')
     if (!ok) return
     const resp = await supabase.from('pedidos').delete().eq('id', pedido.id)
-    if (!resp.error) {
+    if (resp.error) {
+      window.alert('No se pudo eliminar: ' + resp.error.message)
+      return
+    }
+    {
       setPedidos(function (prev) {
         return prev.filter(function (p) { return p.id !== pedido.id })
       })
@@ -218,6 +244,10 @@ function Pedidos() {
 
   if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando pedidos...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={cargarTodo} />
   }
 
   const totales = calcularTotales()

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
 import { IconBox, IconPlus, IconX, IconCheck, IconTrash } from '@tabler/icons-react'
 
 const COLORES = {
@@ -26,6 +28,7 @@ function Productos() {
   const [productos, setProductos] = useState([])
   const [filtroCliente, setFiltroCliente] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -35,10 +38,6 @@ function Productos() {
   const [unidad, setUnidad] = useState('Caja')
   const [piezasCaja, setPiezasCaja] = useState(12)
   const [precio, setPrecio] = useState(0)
-
-  useEffect(function () {
-    cargarTodo()
-  }, [])
 
   async function cargarTodo() {
     const resCl = await supabase.from('clientes').select('*')
@@ -50,8 +49,13 @@ function Productos() {
       .order('created_at', { ascending: false })
     setProductos(resProd.data || [])
 
+    setErrorCarga(primerError(resCl, resProd))
     setCargando(false)
   }
+
+  useEffect(function () {
+    cargarTodo()
+  }, [])
 
   function abrirNuevo() {
     setClienteId('')
@@ -72,12 +76,16 @@ function Productos() {
       alert('El SKU y el nombre son obligatorios')
       return
     }
+    if (Number(precio) < 0) {
+      alert('El precio no puede ser negativo')
+      return
+    }
     setGuardando(true)
 
     const resp = await supabase.from('productos').insert([{
       cliente_id: clienteId,
-      sku: sku,
-      nombre: nombre,
+      sku: sku.trim(),
+      nombre: nombre.trim(),
       unidad: unidad,
       piezas_caja: piezasCaja,
       precio_pactado: precio
@@ -86,7 +94,11 @@ function Productos() {
     setGuardando(false)
 
     if (resp.error) {
-      alert('Error al guardar: ' + resp.error.message)
+      if (resp.error.code === '23505') {
+        alert('Ese SKU ya existe para este cliente')
+      } else {
+        alert('Error al guardar: ' + resp.error.message)
+      }
       return
     }
 
@@ -98,7 +110,11 @@ function Productos() {
     const ok = window.confirm('¿Eliminar el producto ' + producto.sku + '?')
     if (!ok) return
     const resp = await supabase.from('productos').delete().eq('id', producto.id)
-    if (!resp.error) {
+    if (resp.error) {
+      window.alert('No se pudo eliminar (tiene pedidos o lotes de produccion?): ' + resp.error.message)
+      return
+    }
+    {
       setProductos(function (prev) {
         return prev.filter(function (p) { return p.id !== producto.id })
       })
@@ -107,6 +123,10 @@ function Productos() {
 
   if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando productos...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={cargarTodo} />
   }
 
   const productosFiltrados = filtroCliente

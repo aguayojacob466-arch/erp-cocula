@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconDroplet, IconPlus, IconX, IconCheck, IconEdit } from '@tabler/icons-react'
+import { hoy, primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
+import { IconDroplet, IconPlus, IconX, IconEdit } from '@tabler/icons-react'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -31,6 +33,7 @@ function nivelStock(stock, minimo) {
 function Inventario() {
   const [materias, setMaterias] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -49,21 +52,22 @@ function Inventario() {
   const [editProveedor, setEditProveedor] = useState('')
   const [guardandoEdicion, setGuardandoEdicion] = useState(false)
 
-  useEffect(function () {
-    cargarMaterias()
-  }, [])
-
   async function cargarMaterias() {
     const resp = await supabase.from('materias_primas').select('*').order('nombre')
+    setErrorCarga(primerError(resp))
     setMaterias(resp.data || [])
     setCargando(false)
   }
+
+  useEffect(function () {
+    cargarMaterias()
+  }, [])
 
   function abrirNuevo() {
     setMateriaId('')
     setCantidad(0)
     setResponsable('')
-    setFecha(new Date().toISOString().split('T')[0])
+    setFecha(hoy())
     setModalAbierto(true)
   }
 
@@ -78,31 +82,34 @@ function Inventario() {
     }
     setGuardando(true)
 
-    const materia = materias.find(function (m) { return m.id === materiaId })
-    const nuevoStock = Number(materia.stock) + Number(cantidad)
+    const resp = await supabase.rpc('mover_inventario', {
+      p_materia: materiaId,
+      p_tipo: 'entrada',
+      p_cantidad: cantidad,
+      p_responsable: responsable,
+      p_fecha: fecha
+    })
 
-    const respUpdate = await supabase
-      .from('materias_primas')
-      .update({ stock: nuevoStock, ultima_entrada: fecha })
-      .eq('id', materiaId)
+    setGuardando(false)
 
-    if (respUpdate.error) {
-      window.alert('Error: ' + respUpdate.error.message)
-      setGuardando(false)
+    if (resp.error) {
+      window.alert('Error: ' + resp.error.message)
       return
     }
 
-    await supabase.from('movimientos_inventario').insert([{
-      materia_prima_id: materiaId,
-      tipo: 'entrada',
-      cantidad: cantidad,
-      responsable: responsable,
-      fecha: fecha
-    }])
-
-    setGuardando(false)
     setModalAbierto(false)
     cargarMaterias()
+  }
+
+  function abrirNuevoInsumo() {
+    setMateriaEditando(null)
+    setEditNombre('')
+    setEditCategoria('')
+    setEditStock(0)
+    setEditMinimo(0)
+    setEditUnidad('kg')
+    setEditProveedor('')
+    setModalEditar(true)
   }
 
   function abrirEditar(materia) {
@@ -121,25 +128,50 @@ function Inventario() {
       window.alert('El nombre es obligatorio')
       return
     }
+    if (editStock < 0 || editMinimo < 0) {
+      window.alert('El stock y el minimo no pueden ser negativos')
+      return
+    }
     setGuardandoEdicion(true)
 
-    const stockAnterior = Number(materiaEditando.stock)
-    const stockNuevo = Number(editStock)
-    const diferencia = stockNuevo - stockAnterior
+    const datos = {
+      nombre: editNombre.trim(),
+      categoria: editCategoria,
+      minimo: editMinimo,
+      unidad: editUnidad,
+      proveedor: editProveedor
+    }
+
+    // Insumo nuevo: se crea en 0 y el stock inicial entra como movimiento,
+    // para que el historial cuadre con el stock.
+    if (!materiaEditando) {
+      const alta = await supabase.from('materias_primas').insert([Object.assign({ stock: 0 }, datos)]).select().single()
+      if (alta.error) {
+        window.alert('Error: ' + alta.error.message)
+        setGuardandoEdicion(false)
+        return
+      }
+      if (Number(editStock) > 0) {
+        const mov = await supabase.rpc('mover_inventario', {
+          p_materia: alta.data.id,
+          p_tipo: 'entrada',
+          p_cantidad: Number(editStock),
+          p_responsable: 'Stock inicial',
+          p_fecha: hoy(),
+          p_nota: 'Alta de insumo'
+        })
+        if (mov.error) window.alert('El insumo se creo, pero no se pudo registrar el stock inicial: ' + mov.error.message)
+      }
+      setGuardandoEdicion(false)
+      setModalEditar(false)
+      cargarMaterias()
+      return
+    }
 
     const resp = await supabase
       .from('materias_primas')
-      .update({
-        nombre: editNombre,
-        categoria: editCategoria,
-        stock: stockNuevo,
-        minimo: editMinimo,
-        unidad: editUnidad,
-        proveedor: editProveedor
-      })
+      .update(datos)
       .eq('id', materiaEditando.id)
-      .select()
-      .single()
 
     if (resp.error) {
       window.alert('Error: ' + resp.error.message)
@@ -147,30 +179,33 @@ function Inventario() {
       return
     }
 
+    // El ajuste de stock va por la funcion atomica (suma sobre el valor real de la base).
+    const diferencia = Number(editStock) - Number(materiaEditando.stock)
     if (diferencia !== 0) {
-      await supabase.from('movimientos_inventario').insert([{
-        materia_prima_id: materiaEditando.id,
-        tipo: 'ajuste',
-        cantidad: diferencia,
-        responsable: 'Ajuste manual',
-        fecha: new Date().toISOString().split('T')[0],
-        nota: 'Ajuste de inventario desde ' + stockAnterior + ' a ' + stockNuevo
-      }])
-    }
-
-    setMaterias(function (prev) {
-      return prev.map(function (m) {
-        if (m.id === resp.data.id) return resp.data
-        return m
+      const mov = await supabase.rpc('mover_inventario', {
+        p_materia: materiaEditando.id,
+        p_tipo: 'ajuste',
+        p_cantidad: diferencia,
+        p_responsable: 'Ajuste manual',
+        p_fecha: hoy(),
+        p_nota: 'Ajuste de inventario desde ' + materiaEditando.stock + ' a ' + editStock
       })
-    })
+      if (mov.error) {
+        window.alert('Se guardaron los datos, pero fallo el ajuste de stock: ' + mov.error.message)
+      }
+    }
 
     setGuardandoEdicion(false)
     setModalEditar(false)
+    cargarMaterias()
   }
 
   if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando inventario...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={cargarMaterias} />
   }
 
   let totalCritico = 0
@@ -219,9 +254,14 @@ function Inventario() {
               <IconDroplet size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
               Materias primas
             </strong>
-            <button onClick={abrirNuevo} style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', border: 'none', background: COLORES.verde, color: COLORES.amarillo, cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <IconPlus size={14} /> Registrar entrada
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={abrirNuevoInsumo} style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', border: '1px solid #ddd8cc', background: 'transparent', color: '#5A5040', cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <IconPlus size={14} /> Nuevo insumo
+              </button>
+              <button onClick={abrirNuevo} style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '8px', border: 'none', background: COLORES.verde, color: COLORES.amarillo, cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <IconPlus size={14} /> Registrar entrada
+              </button>
+            </div>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -239,7 +279,7 @@ function Inventario() {
             <tbody>
               {materias.map(function (m) {
                 const nivel = nivelStock(m.stock, m.minimo)
-                const pct = Math.min(Math.round((m.stock / (m.minimo * 2)) * 100), 100)
+                const pct = m.minimo > 0 ? Math.min(Math.round((m.stock / (m.minimo * 2)) * 100), 100) : (m.stock > 0 ? 100 : 0)
                 return (
                   <tr key={m.id} style={{ borderBottom: '1px solid #f0e8d8' }}>
                     <td style={{ padding: '10px 12px', fontWeight: 500 }}>{m.nombre}</td>
@@ -313,7 +353,7 @@ function Inventario() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ background: '#fff', borderRadius: '12px', padding: '2rem', width: '90vw', maxWidth: '500px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '17px', color: COLORES.verde, margin: 0 }}>Editar materia prima</h3>
+              <h3 style={{ fontSize: '17px', color: COLORES.verde, margin: 0 }}>{materiaEditando ? 'Editar materia prima' : 'Nuevo insumo'}</h3>
               <button onClick={function () { setModalEditar(false) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A7060' }}>
                 <IconX size={20} />
               </button>
@@ -327,7 +367,7 @@ function Inventario() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div>
-                <label style={labelStyle}>Stock actual</label>
+                <label style={labelStyle}>{materiaEditando ? 'Stock actual' : 'Stock inicial'}</label>
                 <input type="number" style={inputStyle} value={editStock} onChange={function (e) { setEditStock(parseFloat(e.target.value) || 0) }} />
               </div>
               <div>
@@ -347,9 +387,11 @@ function Inventario() {
             <label style={labelStyle}>Proveedor</label>
             <input style={inputStyle} value={editProveedor} onChange={function (e) { setEditProveedor(e.target.value) }} />
 
-            <div style={{ background: '#FFF0CC', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '11px', color: '#8A5A00' }}>
-              Si cambias el stock manualmente, se registrará como un ajuste en el historial de movimientos.
-            </div>
+            {materiaEditando && (
+              <div style={{ background: '#FFF0CC', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '11px', color: '#8A5A00' }}>
+                Si cambias el stock manualmente, se registrará como un ajuste en el historial de movimientos.
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '1rem' }}>
               <button onClick={function () { setModalEditar(false) }} style={{ fontSize: '13px', padding: '8px 18px', borderRadius: '8px', border: '1px solid #ddd8cc', background: 'transparent', cursor: 'pointer' }}>Cancelar</button>

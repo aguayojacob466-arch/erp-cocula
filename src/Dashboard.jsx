@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconUsers, IconClipboardList, IconTruck } from '@tabler/icons-react'
+import { primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -16,10 +17,7 @@ function Dashboard() {
   const [pedidos, setPedidos] = useState([])
   const [embarques, setEmbarques] = useState([])
   const [cargando, setCargando] = useState(true)
-
-  useEffect(function () {
-    cargarTodo()
-  }, [])
+  const [errorCarga, setErrorCarga] = useState('')
 
   async function cargarTodo() {
     const resCl = await supabase.from('clientes').select('*')
@@ -37,11 +35,20 @@ function Dashboard() {
       .order('created_at', { ascending: false })
     setEmbarques(resEmb.data ? resEmb.data : [])
 
+    setErrorCarga(primerError(resCl, resPed, resEmb))
     setCargando(false)
   }
 
+  useEffect(function () {
+    cargarTodo()
+  }, [])
+
   if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando dashboard...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={cargarTodo} />
   }
 
   let totalVentas = 0

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconTools, IconPlus, IconX, IconCheck } from '@tabler/icons-react'
+import { hoy, primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
+import { IconTools, IconPlus, IconX } from '@tabler/icons-react'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -26,6 +28,7 @@ function Produccion() {
   const [productos, setProductos] = useState([])
   const [pedidos, setPedidos] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -35,10 +38,6 @@ function Produccion() {
   const [fechaInicio, setFechaInicio] = useState('')
   const [fechaFin, setFechaFin] = useState('')
   const [pedidoId, setPedidoId] = useState('')
-
-  useEffect(function () {
-    cargarTodo()
-  }, [])
 
   async function cargarTodo() {
     const resLotes = await supabase
@@ -53,14 +52,19 @@ function Produccion() {
     const resPed = await supabase.from('pedidos').select('*')
     setPedidos(resPed.data || [])
 
+    setErrorCarga(primerError(resLotes, resProd, resPed))
     setCargando(false)
   }
+
+  useEffect(function () {
+    cargarTodo()
+  }, [])
 
   function abrirNuevo() {
     setTipo('lote')
     setProductoId('')
     setCantidad(0)
-    setFechaInicio(new Date().toISOString().split('T')[0])
+    setFechaInicio(hoy())
     setFechaFin('')
     setPedidoId('')
     setModalAbierto(true)
@@ -75,6 +79,14 @@ function Produccion() {
       window.alert('La cantidad debe ser mayor a 0')
       return
     }
+    if (tipo === 'pedido' && !pedidoId) {
+      window.alert('Selecciona el pedido al que corresponde este lote')
+      return
+    }
+    if (fechaFin && fechaInicio && fechaFin < fechaInicio) {
+      window.alert('La fecha de fin no puede ser anterior a la de inicio')
+      return
+    }
     setGuardando(true)
 
     const resp = await supabase.from('lotes_produccion').insert([{
@@ -82,7 +94,7 @@ function Produccion() {
       tipo: tipo,
       cantidad: cantidad,
       fecha_inicio: fechaInicio,
-      fecha_fin: fechaFin,
+      fecha_fin: fechaFin || null,
       pedido_id: tipo === 'pedido' ? pedidoId : null,
       avance: 0,
       estado: 'programado'
@@ -108,7 +120,11 @@ function Produccion() {
       .update({ avance: nuevoAvance, estado: nuevoEstado })
       .eq('id', lote.id)
 
-    if (!resp.error) {
+    if (resp.error) {
+      window.alert('No se pudo actualizar el avance: ' + resp.error.message)
+      return
+    }
+    {
       setLotes(function (prev) {
         return prev.map(function (l) {
           if (l.id === lote.id) return Object.assign({}, l, { avance: nuevoAvance, estado: nuevoEstado })
@@ -120,6 +136,10 @@ function Produccion() {
 
   if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando produccion...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={cargarTodo} />
   }
 
   const lotesActivos = lotes.filter(function (l) { return l.estado !== 'terminado' }).length

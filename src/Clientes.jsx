@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
-import { IconUsers, IconPhone, IconMail, IconBuildingStore, IconActivity, IconPlus, IconX, IconEdit, IconCheck, IconTrash, IconBell } from '@tabler/icons-react'
+import { hoy, primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
+import { IconUsers, IconPhone, IconBuildingStore, IconActivity, IconPlus, IconX, IconEdit, IconTrash, IconBell } from '@tabler/icons-react'
 
 const COLORES = {
   verde: '#1A3A2A',
@@ -50,6 +52,7 @@ function Clientes() {
   const [alertas, setAlertas] = useState([])
   const [tab, setTab] = useState('datos')
   const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [modoEdicion, setModoEdicion] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -71,15 +74,16 @@ function Clientes() {
   const [alertaNota, setAlertaNota] = useState('')
   const [alertaFecha, setAlertaFecha] = useState('')
 
-  useEffect(function () {
-    obtenerClientes()
-  }, [])
-
   async function obtenerClientes() {
     const resp = await supabase.from('clientes').select('*').order('created_at', { ascending: false })
+    setErrorCarga(primerError(resp))
     if (resp.data) setClientes(resp.data)
     setCargando(false)
   }
+
+  useEffect(function () {
+    obtenerClientes()
+  }, [])
 
   async function verPerfil(cliente) {
     setClienteSel(cliente)
@@ -172,13 +176,15 @@ function Clientes() {
   }
 
   async function eliminarCliente(cliente) {
-    const ok = window.confirm('Eliminar a ' + cliente.nombre + '?')
+    const ok = window.confirm('Eliminar a ' + cliente.nombre + '?\n\nTambien se borraran sus contactos, actividades, alertas, productos y pedidos. No se puede deshacer.')
     if (!ok) return
     const resp = await supabase.from('clientes').delete().eq('id', cliente.id)
-    if (!resp.error) {
-      setClientes(function (prev) { return prev.filter(function (c) { return c.id !== cliente.id }) })
-      setClienteSel(null)
+    if (resp.error) {
+      window.alert('No se pudo eliminar: ' + resp.error.message)
+      return
     }
+    setClientes(function (prev) { return prev.filter(function (c) { return c.id !== cliente.id }) })
+    setClienteSel(null)
   }
 
   function abrirModalContacto() {
@@ -213,7 +219,7 @@ function Clientes() {
   function abrirModalActividad() {
     setActividadTipo('llamada')
     setActividadDescripcion('')
-    setActividadFecha(new Date().toISOString().split('T')[0])
+    setActividadFecha(hoy())
     setModalActividad(true)
   }
 
@@ -240,7 +246,7 @@ function Clientes() {
   function abrirModalAlerta() {
     setAlertaTipo('llamada')
     setAlertaNota('')
-    setAlertaFecha(new Date().toISOString().split('T')[0])
+    setAlertaFecha(hoy())
     setModalAlerta(true)
   }
 
@@ -267,7 +273,11 @@ function Clientes() {
 
   async function resolverAlerta(alerta) {
     const resp = await supabase.from('alertas').update({ resuelta: true }).eq('id', alerta.id)
-    if (!resp.error) {
+    if (resp.error) {
+      window.alert('No se pudo resolver la alerta: ' + resp.error.message)
+      return
+    }
+    {
       setAlertas(function (prev) {
         return prev.map(function (a) {
           if (a.id === alerta.id) return Object.assign({}, a, { resuelta: true })
@@ -275,8 +285,14 @@ function Clientes() {
         })
       })
     }
-  }if (cargando) {
+  }
+
+  if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando clientes...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={obtenerClientes} />
   }
 
   function tabBtn(id, label, Icon, contador) {

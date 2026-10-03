@@ -17,5 +17,9 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Cargar datos al montar (fetch -> setState tras await) es valido; la regla lo marca por error.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

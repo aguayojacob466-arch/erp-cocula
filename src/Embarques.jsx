@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { primerError } from './utils'
+import ErrorCarga from './ErrorCarga'
 import { IconTruck, IconPlus, IconX, IconCheck, IconPackage, IconBuildingStore, IconChartBar, IconAlertTriangle } from '@tabler/icons-react'
 
 const COLORES = {
@@ -46,6 +48,7 @@ function Embarques() {
   const [embarques, setEmbarques] = useState([])
   const [pedidos, setPedidos] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [errorCarga, setErrorCarga] = useState('')
   const [modalAbierto, setModalAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -60,10 +63,6 @@ function Embarques() {
   const [itemsEntrega, setItemsEntrega] = useState([])
   const [guardandoEntrega, setGuardandoEntrega] = useState(false)
 
-  useEffect(function () {
-    cargarTodo()
-  }, [])
-
   async function cargarTodo() {
     const resEmb = await supabase
       .from('embarques')
@@ -77,8 +76,13 @@ function Embarques() {
       .order('created_at', { ascending: false })
     setPedidos(resPed.data || [])
 
+    setErrorCarga(primerError(resEmb, resPed))
     setCargando(false)
   }
+
+  useEffect(function () {
+    cargarTodo()
+  }, [])
 
   function abrirNuevo() {
     setPedidoId('')
@@ -101,7 +105,7 @@ function Embarques() {
       tipo_embarque: tipoEmbarque,
       carrier: carrier,
       destino: destino,
-      fecha_estimada: fechaEstimada,
+      fecha_estimada: fechaEstimada || null,
       estado: 'pendiente'
     }])
 
@@ -122,7 +126,16 @@ function Embarques() {
       return
     }
     const resp = await supabase.from('embarques').update({ estado: nuevoEstado }).eq('id', embarque.id)
-    if (!resp.error) {
+    if (resp.error) {
+      alert('No se pudo cambiar el estado: ' + resp.error.message)
+      return
+    }
+    // Mantener la etapa del pedido sincronizada con su embarque.
+    if (nuevoEstado === 'en_transito') {
+      const respPed = await supabase.from('pedidos').update({ etapa: 'embarque' }).eq('id', embarque.pedido_id)
+      if (respPed.error) alert('El embarque cambio, pero no se pudo actualizar el pedido: ' + respPed.error.message)
+    }
+    {
       setEmbarques(function (prev) {
         return prev.map(function (e) {
           if (e.id === embarque.id) return Object.assign({}, e, { estado: nuevoEstado })
@@ -165,6 +178,17 @@ function Embarques() {
   }
 
   async function confirmarEntrega() {
+    for (let i = 0; i < itemsEntrega.length; i++) {
+      const ent = Number(itemsEntrega[i].cantidadEntregada)
+      if (itemsEntrega[i].cantidadEntregada === '' || isNaN(ent) || ent < 0) {
+        alert('La cantidad entregada debe ser un numero mayor o igual a 0')
+        return
+      }
+      if (ent > Number(itemsEntrega[i].cantidadPedida)) {
+        alert('La cantidad entregada no puede ser mayor a la pedida')
+        return
+      }
+    }
     setGuardandoEntrega(true)
 
     try {
@@ -185,15 +209,17 @@ function Embarques() {
         return Number(it.cantidadEntregada) >= Number(it.cantidadPedida)
       })
 
-      await supabase
+      const respPed = await supabase
         .from('pedidos')
-        .update({ tipo_entrega: todoCompleto ? 'completa' : 'parcial' })
+        .update({ tipo_entrega: todoCompleto ? 'completa' : 'parcial', etapa: 'entregado' })
         .eq('id', embarqueEntrega.pedido_id)
+      if (respPed.error) throw respPed.error
 
-      await supabase
+      const respEmb = await supabase
         .from('embarques')
         .update({ estado: 'entregado' })
         .eq('id', embarqueEntrega.id)
+      if (respEmb.error) throw respEmb.error
 
       setModalEntregaAbierto(false)
       setEmbarqueEntrega(null)
@@ -221,6 +247,10 @@ function Embarques() {
 
   if (cargando) {
     return <p style={{ padding: '2rem' }}>Cargando embarques...</p>
+  }
+
+  if (errorCarga) {
+    return <ErrorCarga mensaje={errorCarga} onReintentar={cargarTodo} />
   }
 
   const totalEmb = embarques.length
