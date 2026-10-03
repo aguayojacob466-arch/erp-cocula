@@ -264,7 +264,6 @@ tr:hover{background:var(--ice);}
 <div class="tabs" id="tabBar" style="display:none;">
   <div class="tab active-ventas" onclick="switchTab('ventas')" id="tabVentas">Ventas</div>
   <div class="tab" onclick="switchTab('inventario')" id="tabInventario">Inventario</div>
-  <div class="tab" onclick="switchTab('devoluciones')" id="tabDevoluciones">Devoluciones</div>
   <div class="tab" onclick="switchTab('facturacion')" id="tabFacturacion">Facturación</div>
 </div>
 
@@ -295,17 +294,6 @@ tr:hover{background:var(--ice);}
       <div class="chart-box" id="chartInvProd"></div>
     </div>
     <div class="card"><h2>Detalle de Inventario</h2><div class="table-wrap" id="tblInventario"></div></div>
-  </div>
-
-  <!-- DEVOLUCIONES SECTION -->
-  <div class="section" id="secDevoluciones">
-    <div class="kpi-row" id="devKpis"></div>
-    <div class="filter-bar" id="devFilters"></div>
-    <div class="charts-row">
-      <div class="chart-box" id="chartDevSuc"></div>
-      <div class="chart-box" id="chartDevProd"></div>
-    </div>
-    <div class="card"><h2>Detalle de Devoluciones</h2><div class="table-wrap" id="tblDevoluciones"></div></div>
   </div>
 
   <!-- FACTURACION SECTION -->
@@ -462,8 +450,8 @@ function switchTab(t){
   currentTab=t;
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('visible'));
   document.querySelectorAll('.tab').forEach(t2=>t2.className='tab');
-  const secMap={ventas:'secVentas',inventario:'secInventario',devoluciones:'secDevoluciones',facturacion:'secFacturacion'};
-  const tabMap={ventas:'tabVentas',inventario:'tabInventario',devoluciones:'tabDevoluciones',facturacion:'tabFacturacion'};
+  const secMap={ventas:'secVentas',inventario:'secInventario',facturacion:'secFacturacion'};
+  const tabMap={ventas:'tabVentas',inventario:'tabInventario',facturacion:'tabFacturacion'};
   document.getElementById(secMap[t]).classList.add('visible');
   const isFact=t==='facturacion';
   document.getElementById(tabMap[t]).classList.add(isFact?'active-fact':'active-ventas');
@@ -540,7 +528,7 @@ function importFiles(files){
             else if(sn.includes('devolucion')||sn.includes('dev'))type='devoluciones';
             else if(sn.includes('factura')||sn.includes('fact'))type='facturacion';
           }
-          if(!type)continue;
+          if(!type||type==='devoluciones')continue; /* Devoluciones ya no se usa */
           /* Check for CONTPAQ format (3 metadata rows) */
           const hasContpaqMeta=raw.length>3&&raw[0].length<=2&&raw[1].length<=2;
           const dataStart=hasContpaqMeta?3:1;
@@ -973,9 +961,6 @@ function renderAll(){
   renderInvKPIs();
   populateInvFilters();
   applyInvFilters();
-  renderDevKPIs();
-  populateDevFilters();
-  applyDevFilters();
   renderFactKPIs();
   populateFactFilters();
   applyFactFilters();
