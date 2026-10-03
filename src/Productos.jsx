@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { useRol } from './RolContext'
 import { primerError } from './utils'
 import ErrorCarga from './ErrorCarga'
 import { IconBox, IconPlus, IconX, IconCheck, IconTrash } from '@tabler/icons-react'
@@ -24,6 +25,7 @@ const labelStyle = {
 }
 
 function Productos() {
+  const { esAdmin } = useRol()
   const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
   const [filtroCliente, setFiltroCliente] = useState('')
@@ -204,9 +206,11 @@ function Productos() {
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>{p.piezas_caja}</td>
                       <td style={{ padding: '10px 12px', fontWeight: 500, color: COLORES.verde }}>${Number(p.precio_pactado).toFixed(2)}</td>
                       <td style={{ padding: '10px 12px' }}>
+                        {esAdmin && (
                         <button onClick={function () { eliminarProducto(p) }} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '8px', border: '1px solid #F0C0B8', background: 'transparent', color: '#C0321A', cursor: 'pointer' }}>
                           <IconTrash size={12} />
                         </button>
+                        )}
                       </td>
                     </tr>
                   )

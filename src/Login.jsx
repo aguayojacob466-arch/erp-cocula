@@ -1,0 +1,61 @@
+import { useState } from 'react'
+import { supabase } from './supabaseClient'
+
+const inputStyle = {
+  width: '100%', fontSize: '14px', border: '1px solid #ddd8cc', borderRadius: '8px',
+  padding: '10px 12px', background: '#FAF6EE', color: '#3A3020', outline: 'none', marginBottom: '14px',
+  boxSizing: 'border-box'
+}
+
+function traducirError(mensaje) {
+  if (/invalid login credentials/i.test(mensaje)) return 'Correo o contraseña incorrectos'
+  if (/email not confirmed/i.test(mensaje)) return 'Tu correo aun no esta confirmado'
+  if (/rate limit|too many/i.test(mensaje)) return 'Demasiados intentos, espera un momento'
+  return mensaje
+}
+
+function Login() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [entrando, setEntrando] = useState(false)
+
+  async function entrar(e) {
+    e.preventDefault()
+    setError('')
+    setEntrando(true)
+    const resp = await supabase.auth.signInWithPassword({ email: email.trim(), password: password })
+    setEntrando(false)
+    if (resp.error) setError(traducirError(resp.error.message))
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#F5F0E8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
+      <form onSubmit={entrar} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #ddd8cc', padding: '2rem', width: '100%', maxWidth: '380px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1.5rem' }}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#C8860A', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 500 }}>MC</div>
+          <div>
+            <div style={{ color: '#1A3A2A', fontWeight: 500, fontSize: '16px' }}>Maquiladora de Cocula</div>
+            <div style={{ color: '#7A7060', fontSize: '11px', letterSpacing: '1px', textTransform: 'uppercase' }}>Iniciar sesion</div>
+          </div>
+        </div>
+
+        <label style={{ fontSize: '11px', color: '#7A7060', display: 'block', marginBottom: '4px', fontWeight: 500, textTransform: 'uppercase' }}>Correo</label>
+        <input type="email" required autoComplete="username" style={inputStyle} value={email} onChange={function (e) { setEmail(e.target.value) }} />
+
+        <label style={{ fontSize: '11px', color: '#7A7060', display: 'block', marginBottom: '4px', fontWeight: 500, textTransform: 'uppercase' }}>Contraseña</label>
+        <input type="password" required autoComplete="current-password" style={inputStyle} value={password} onChange={function (e) { setPassword(e.target.value) }} />
+
+        {error && (
+          <div role="alert" style={{ background: '#FFE0DB', color: '#C0321A', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', marginBottom: '14px' }}>{error}</div>
+        )}
+
+        <button type="submit" disabled={entrando} style={{ width: '100%', fontSize: '14px', padding: '10px', borderRadius: '8px', border: 'none', background: '#1A3A2A', color: '#F0C84A', cursor: 'pointer', fontWeight: 500, opacity: entrando ? 0.6 : 1 }}>
+          {entrando ? 'Entrando...' : 'Entrar'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
+export default Login

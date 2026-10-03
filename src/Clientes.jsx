@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { useRol } from './RolContext'
 import { hoy, primerError } from './utils'
 import ErrorCarga from './ErrorCarga'
 import { IconUsers, IconPhone, IconBuildingStore, IconActivity, IconPlus, IconX, IconEdit, IconTrash, IconBell } from '@tabler/icons-react'
@@ -45,6 +46,7 @@ const FORM_VACIO = {
 }
 
 function Clientes() {
+  const { esAdmin } = useRol()
   const [clientes, setClientes] = useState([])
   const [clienteSel, setClienteSel] = useState(null)
   const [contactos, setContactos] = useState([])
@@ -385,9 +387,11 @@ function Clientes() {
                 <button onClick={function () { abrirEdicion(clienteSel) }} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
                   <IconEdit size={14} /> Editar
                 </button>
+                {esAdmin && (
                 <button onClick={function () { eliminarCliente(clienteSel) }} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', marginLeft: '6px' }}>
                   <IconTrash size={14} /> Eliminar
                 </button>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e8e0d0', background: '#FAF6EE', padding: '0 1rem' }}>

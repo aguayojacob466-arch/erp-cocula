@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { useRol } from './RolContext'
 import { hoy, primerError } from './utils'
 import ErrorCarga from './ErrorCarga'
 import { IconClipboardList, IconPlus, IconX, IconCheck, IconTrash, IconChartBar, IconUsers, IconBox } from '@tabler/icons-react'
@@ -40,6 +41,7 @@ function tabBtnStyle(activo) {
 }
 
 function Pedidos() {
+  const { esAdmin } = useRol()
   const [clientes, setClientes] = useState([])
   const [pedidos, setPedidos] = useState([])
   const [pedidoItems, setPedidoItems] = useState([])
@@ -370,9 +372,11 @@ function Pedidos() {
                                 Avanzar
                               </button>
                             )}
+                            {esAdmin && (
                             <button onClick={function () { eliminarPedido(p) }} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '8px', border: '1px solid #F0C0B8', background: 'transparent', color: '#C0321A', cursor: 'pointer' }}>
                               <IconTrash size={12} />
                             </button>
+                            )}
                           </div>
                         </td>
                       </tr>
