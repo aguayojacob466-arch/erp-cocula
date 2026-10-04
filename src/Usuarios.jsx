@@ -129,7 +129,7 @@ function Usuarios({ miId }) {
   const boton = { fontSize: '12px', padding: '6px 12px', borderRadius: '8px', border: '1px solid ' + COLORES.borde, background: '#fff', color: COLORES.texto, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }
 
   return (
-    <div style={{ padding: '1.5rem 2rem 2.5rem', fontFamily: 'inherit', color: COLORES.texto }}>
+    <div className="u-pagina">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '1.25rem' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '1.4rem', letterSpacing: '-0.02em' }}>Usuarios</h2>
@@ -137,6 +137,7 @@ function Usuarios({ miId }) {
         </div>
         <button
           onClick={function () { setMostrarForm(!mostrarForm); setAviso(null) }}
+          className="u-boton-principal"
           style={{ fontSize: '14px', padding: '9px 18px', borderRadius: '8px', border: 'none', background: COLORES.navy, color: '#fff', cursor: 'pointer', fontWeight: 700, fontFamily: 'inherit' }}
         >
           {mostrarForm ? 'Cancelar' : 'Agregar usuario'}
@@ -188,7 +189,7 @@ function Usuarios({ miId }) {
         ) : errorCarga ? (
           <p style={{ padding: '1.25rem', margin: 0, color: '#B01E32' }}>No se pudieron cargar los usuarios: {errorCarga}</p>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+          <table className="u-tabla" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
             <thead>
               <tr style={{ background: COLORES.hielo }}>
                 {['Correo', 'Permisos', 'Creado', ''].map(function (t, i) {

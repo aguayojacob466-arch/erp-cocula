@@ -19,7 +19,6 @@ function Ventas() {
     <iframe
       title="Dashboard de Ventas 2026"
       src="/dashboard-ventas.html"
-      style={{ width: '100%', height: 'calc(100vh - 44px)', border: 'none', display: 'block' }}
     />
   )
 }

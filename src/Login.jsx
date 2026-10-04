@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from './supabaseClient'
 
 const inputStyle = {
-  width: '100%', fontSize: '14px', border: '1px solid #DCE5F3', borderRadius: '8px',
+  width: '100%', fontSize: '16px', border: '1px solid #DCE5F3', borderRadius: '8px',
   padding: '10px 12px', background: '#fff', color: '#0F1F3D', outline: 'none', marginBottom: '14px',
   boxSizing: 'border-box'
 }
@@ -30,12 +30,12 @@ function Login() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F2F6FC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#F2F6FC', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'inherit' }}>
       <form onSubmit={entrar} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #DCE5F3', padding: '2rem', width: '100%', maxWidth: '380px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1.5rem' }}>
           <img src="/logo.svg" alt="Jabones Ibarra" style={{ height: '44px', width: 'auto', display: 'block' }} />
           <div>
-            <div style={{ color: '#0B2A5B', fontWeight: 500, fontSize: '16px' }}>Maquiladora de Cocula</div>
+            <div style={{ color: '#0B2A5B', fontWeight: 800, fontSize: '17px', letterSpacing: '-0.01em' }}>Maquiladora de Cocula</div>
             <div style={{ color: '#5A6B88', fontSize: '11px', letterSpacing: '1px', textTransform: 'uppercase' }}>Iniciar sesion</div>
           </div>
         </div>

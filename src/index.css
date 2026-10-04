@@ -1,4 +1,4 @@
-/* Base global: la app ocupa todo el ancho de la pantalla. */
+/* Base global: la app ocupa todo el ancho y alto de la pantalla (escritorio y celular). */
 *,
 *::before,
 *::after {
@@ -13,6 +13,7 @@ body {
   color: #0F1F3D;
   font-family: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
   text-rendering: optimizeLegibility;
 }
 
@@ -21,4 +22,201 @@ body {
   min-height: 100svh;
   display: flex;
   flex-direction: column;
+}
+
+/* ===== Estructura del ERP =====
+   dvh = alto visible real: en el celular no se corta por la barra de direcciones. */
+.erp-app {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.erp-bar {
+  flex: none;
+  min-height: 44px;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #0B2A5B;
+  color: #A9C3EC;
+  font-size: 12px;
+}
+
+.erp-marca {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.erp-logo {
+  height: 28px;
+  width: auto;
+  display: block;
+  flex: none;
+}
+
+.erp-nombre {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.erp-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.erp-nav button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  background: transparent;
+  color: #A9C3EC;
+}
+
+.erp-nav button.activo {
+  background: #fff;
+  color: #0B2A5B;
+}
+
+.erp-usuario {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.erp-salir {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border: 1px solid #A9C3EC;
+  border-radius: 8px;
+  background: transparent;
+  color: #A9C3EC;
+  cursor: pointer;
+}
+
+.erp-contenido {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.erp-vista-ventas {
+  height: 100%;
+}
+
+.erp-vista-ventas iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* ===== Pantalla de Usuarios ===== */
+.u-pagina {
+  padding: 1.5rem 2rem 2.5rem;
+  color: #0F1F3D;
+}
+
+/* ===== Celular ===== */
+@media (max-width: 720px) {
+  .erp-bar {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px 10px;
+  }
+
+  .erp-marca {
+    flex: 1;
+    gap: 10px;
+  }
+
+  .erp-email {
+    display: none;
+  }
+
+  .erp-salir {
+    min-height: 36px;
+    padding: 6px 14px;
+  }
+
+  /* Pestañas en su propia fila, a todo el ancho y faciles de tocar */
+  .erp-nav {
+    order: 3;
+    flex-basis: 100%;
+    padding: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+  }
+
+  .erp-nav button {
+    flex: 1;
+    min-height: 38px;
+    font-size: 13px;
+  }
+
+  .u-pagina {
+    padding: 1rem 1rem 2rem;
+  }
+
+  .u-pagina input,
+  .u-pagina select {
+    font-size: 16px !important; /* evita el zoom automatico de iOS al escribir */
+  }
+
+  .u-boton-principal {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* La tabla de usuarios pasa a una tarjeta por usuario */
+  .u-tabla thead {
+    display: none;
+  }
+
+  .u-tabla,
+  .u-tabla tbody,
+  .u-tabla tr,
+  .u-tabla td {
+    display: block;
+    width: 100%;
+  }
+
+  .u-tabla tr {
+    padding: 12px 14px !important;
+  }
+
+  .u-tabla td {
+    padding: 3px 0 !important;
+    text-align: left !important;
+    word-break: break-word;
+  }
+
+  .u-tabla td:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .u-tabla td:last-child button {
+    flex: 1;
+    min-height: 40px;
+    margin: 0 !important;
+  }
 }
