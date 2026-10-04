@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dashboard de Ventas 2026</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -171,6 +172,7 @@ body{font-family:var(--ff);background:var(--bg);color:var(--text);-webkit-font-s
 .main-content{max-width:none;margin:0;padding:1.25rem 2rem 2rem;}
 .tabs{padding-left:2rem;padding-right:2rem;}
 .top-bar h1{font-size:1.2rem;font-weight:800;letter-spacing:-.02em;}
+.brand-logo{height:34px;width:auto;display:block;margin-right:.35rem;}
 .top-bar .role-badge{background:rgba(255,255,255,.14);font-weight:700;letter-spacing:.02em;}
 .top-bar .btn-row .btn{border-radius:8px;}
 .top-bar .sync-indicator{padding:.3rem .75rem;}
@@ -253,10 +255,10 @@ tr:hover{background:var(--ice);}
 
 <!-- Top Bar -->
 <div class="top-bar" id="topBar" style="display:none;">
-  <h1>Dashboard de Ventas 2026 <span class="role-badge" id="roleBadge"></span> <span class="sync-indicator" id="syncIndicator"><span class="sync-dot online" id="syncDot"></span> <span id="syncLabel">Datos locales</span></span></h1>
+  <h1><img src="/logo.svg" alt="Jabones Ibarra" class="brand-logo">Dashboard de Ventas 2026 <span class="role-badge" id="roleBadge"></span> <span class="sync-indicator" id="syncIndicator"><span class="sync-dot online" id="syncDot"></span> <span id="syncLabel">Datos locales</span></span></h1>
   <div class="btn-row">
-    <label class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;cursor:pointer;">Importar Excel <input type="file" accept=".xlsx,.xls,.csv" multiple onchange="importFiles(this.files)" style="display:none;"></label>
-    <button class="btn btn-sm" style="background:rgba(255,255,255,.15);color:#fff;" onclick="exportAllXLSX()">Exportar XLSX</button>
+    <label class="btn btn-sm" id="btnImportar" style="background:rgba(255,255,255,.15);color:#fff;cursor:pointer;">Importar Excel <input type="file" accept=".xlsx,.xls,.csv" multiple onchange="importFiles(this.files)" style="display:none;"></label>
+    <button class="btn btn-sm" id="btnExportar" style="background:rgba(255,255,255,.15);color:#fff;" onclick="exportAllXLSX()">Exportar XLSX</button>
   </div>
 </div>
 
@@ -391,11 +393,12 @@ function enterDashboard(){
   document.getElementById('topBar').style.display='flex';
   document.getElementById('tabBar').style.display='flex';
   document.getElementById('mainContent').style.display='block';
-  document.getElementById('roleBadge').textContent=CURRENT_ROLE==='admin'?'Administrador':'Consultor';
+  document.getElementById('roleBadge').textContent=CURRENT_ROLE==='admin'?'Administrador':'Usuario';
   applyRolePermissions();
-  loadFromLocal();
+  if(!nube())loadFromLocal();
   initFirebase();
   renderAll();
+  iniciarNube();
 }
 
 /* Embebida en el ERP: el ERP ya autentico al usuario y publica su rol en window.__ERP_ROL.
@@ -440,8 +443,12 @@ function initAccessControl(){
 function applyRolePermissions(){
   if(CURRENT_ROLE==='consultor'){
     document.getElementById('mainContent').classList.add('consultor-readonly');
+    document.getElementById('btnImportar').style.display='none';
+    document.getElementById('btnExportar').style.display='none';
   }else{
     document.getElementById('mainContent').classList.remove('consultor-readonly');
+    document.getElementById('btnImportar').style.display='';
+    document.getElementById('btnExportar').style.display='';
   }
 }
 
@@ -499,6 +506,7 @@ function mergeData(arr,newRows,type){
 function importFiles(files){
   if(!files||!files.length)return;
   let totalAdded=0, processed=0;
+  const colaNube=[];
   const count=files.length;
   for(const f of files){
     const reader=new FileReader();
@@ -511,7 +519,7 @@ function importFiles(files){
           if(raw.length<4)continue;
           /* Reporte CONTPAQ "Análisis de Precios por Cliente" = facturación por línea */
           const cp=parseContpaqFacturacion(raw);
-          if(cp){ totalAdded+=mergeData(facturacion,cp,'facturacion'); continue; }
+          if(cp){ totalAdded+=mergeData(facturacion,cp,'facturacion'); colaNube.push({tipo:'facturacion',rows:cp}); continue; }
           /* Detect type by header row */
           const headers=raw[2]||raw[0]||[];
           const hLower=headers.map(h=>(h+'').toLowerCase().trim());
@@ -564,6 +572,7 @@ function importFiles(files){
           else if(type==='devoluciones') added=mergeData(devoluciones,mapped,'devoluciones');
           else if(type==='facturacion') added=mergeData(facturacion,mapped,'facturacion');
           totalAdded+=added;
+          colaNube.push({tipo:type,rows:mapped});
         }
       }catch(err){
         console.error('Error reading file:',err);
@@ -572,9 +581,9 @@ function importFiles(files){
       processed++;
       if(processed===count){
         saveLocal();
-        pushToFirebase();
         renderAll();
         showToast('✅ Se importaron '+totalAdded+' registros nuevos','success');
+        subirANube(colaNube);
       }
     };
     reader.readAsArrayBuffer(f);
@@ -648,6 +657,102 @@ function exportAllXLSX(){
   if(facturacion.length){XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(facturacion),'Facturación');}
   XLSX.writeFile(wb,'Dashboard_Promaquila_'+new Date().toISOString().slice(0,10)+'.xlsx');
   showToast('Archivo XLSX exportado','success');
+}
+
+/* ===== NUBE (Supabase): datos compartidos y en vivo =====
+   Dentro del ERP se usa el cliente de Supabase de la sesion (window.parent.__ERP_SUPABASE).
+   El admin importa -> se guarda en la tabla dashboard_registros -> todos lo ven en tiempo real.
+   Sin ERP (pagina abierta directo) o si la base falla, se trabaja con datos locales. */
+function nube(){
+  try{ return window.parent!==window ? (window.parent.__ERP_SUPABASE||null) : null; }
+  catch(e){ return null; }
+}
+let _nubeActiva=false, _nubeCanal=null, _nubeTimer=null;
+
+async function cargarDesdeNube(){
+  const db=nube();
+  const nuevos={ventas:[],inventario:[],facturacion:[]};
+  const PAGINA=1000; /* PostgREST devuelve maximo 1000 filas por consulta */
+  for(let desde=0;;desde+=PAGINA){
+    const resp=await db.from('dashboard_registros').select('tipo,datos').order('id',{ascending:true}).range(desde,desde+PAGINA-1);
+    if(resp.error)throw resp.error;
+    for(const f of resp.data){ if(nuevos[f.tipo])nuevos[f.tipo].push(f.datos); }
+    if(resp.data.length<PAGINA)break;
+  }
+  ventas=nuevos.ventas; inventario=nuevos.inventario; facturacion=nuevos.facturacion;
+}
+
+async function iniciarNube(){
+  const db=nube();
+  if(!db)return;
+  updateSyncIndicator('syncing');
+  try{
+    await cargarDesdeNube();
+    _nubeActiva=true;
+    renderAll();
+    suscribirNube(db);
+  }catch(e){
+    console.error('Nube:',e);
+    _nubeActiva=false;
+    updateSyncIndicator('error');
+    const falta=/dashboard_registros|schema cache/i.test(e.message||'');
+    showToast(falta
+      ?'Falta crear la tabla compartida: ejecuta supabase/dashboard.sql en Supabase. Mientras tanto se muestran los datos de este navegador.'
+      :'No se pudo conectar con la base compartida ('+(e.message||e)+'). Se muestran los datos de este navegador.','error');
+    loadFromLocal();
+    renderAll();
+  }
+}
+
+function suscribirNube(db){
+  if(_nubeCanal)return;
+  _nubeCanal=db.channel('dashboard-registros-'+Date.now())
+    .on('postgres_changes',{event:'*',schema:'public',table:'dashboard_registros'},()=>{
+      /* varios cambios seguidos (una importacion grande) se agrupan en una sola recarga */
+      clearTimeout(_nubeTimer);
+      _nubeTimer=setTimeout(refrescarNube,700);
+    })
+    .subscribe(estado=>{
+      if(estado==='SUBSCRIBED')updateSyncIndicator('online');
+      else if(estado==='CHANNEL_ERROR'||estado==='TIMED_OUT'||estado==='CLOSED')updateSyncIndicator('offline');
+    });
+}
+
+async function refrescarNube(){
+  try{ await cargarDesdeNube(); renderAll(); }
+  catch(e){ console.error('Nube:',e); updateSyncIndicator('error'); }
+}
+
+async function subirANube(cola){
+  const db=nube();
+  if(!db||!_nubeActiva||!cola.length)return;
+  const registros=new Map();
+  for(const item of cola){
+    for(const fila of item.rows){
+      const clave=dupKey(fila,item.tipo);
+      registros.set(item.tipo+'|'+clave,{tipo:item.tipo,clave:clave,datos:fila});
+    }
+  }
+  const lista=[...registros.values()];
+  updateSyncIndicator('syncing');
+  try{
+    for(let i=0;i<lista.length;i+=300){
+      /* ignoreDuplicates: lo que ya existe se respeta; solo entra lo nuevo */
+      const resp=await db.from('dashboard_registros').upsert(lista.slice(i,i+300),{onConflict:'tipo,clave',ignoreDuplicates:true});
+      if(resp.error)throw resp.error;
+    }
+    await cargarDesdeNube();
+    renderAll();
+    updateSyncIndicator('online');
+    showToast('Datos compartidos con todos los usuarios','success');
+  }catch(e){
+    console.error('Nube:',e);
+    updateSyncIndicator('error');
+    const msg=/row-level security|permission denied/i.test(e.message||'')
+      ?'Solo el administrador puede importar datos.'
+      :'No se pudo guardar en la base compartida: '+(e.message||e);
+    showToast(msg,'error');
+  }
 }
 
 /* ===== FIREBASE ===== */
@@ -819,7 +924,9 @@ function updateSyncIndicator(state){
   const dot=document.getElementById('syncDot');
   const lbl=document.getElementById('syncLabel');
   dot.className='sync-dot '+state;
-  const labels={offline:'Datos locales',syncing:'Sincronizando...',online:'Datos locales',error:'Error'};
+  const labels=nube()
+    ?{offline:'Sin conexión',syncing:'Sincronizando...',online:'En vivo',error:'Sin conexión a la base'}
+    :{offline:'Datos locales',syncing:'Sincronizando...',online:'Datos locales',error:'Error'};
   lbl.textContent=labels[state]||state;
 }
 

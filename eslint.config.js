@@ -22,4 +22,9 @@ export default defineConfig([
       'react-hooks/set-state-in-effect': 'off',
     },
   },
+  {
+    // Funciones de servidor de Vercel (Node)
+    files: ['api/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
 ])

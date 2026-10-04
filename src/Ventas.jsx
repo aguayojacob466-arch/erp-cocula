@@ -1,4 +1,5 @@
 import { useLayoutEffect } from 'react'
+import { supabase } from './supabaseClient'
 import { useRol } from './RolContext'
 
 // Dashboard de Ventas 2026 (importa el Excel de facturacion). Es una pagina
@@ -6,10 +7,12 @@ import { useRol } from './RolContext'
 function Ventas() {
   const { esAdmin } = useRol()
 
-  // La pagina lee el rol del ERP (en vez de pedir su propia contrasena).
-  // Se fija antes de que los scripts del marco se ejecuten.
+  // La pagina usa la sesion del ERP: su rol (en vez de pedir contrasena propia)
+  // y el cliente de Supabase para guardar/leer los datos compartidos en vivo.
+  // Solo la pagina del mismo origen puede leerlos. Se fija antes de que el marco ejecute scripts.
   useLayoutEffect(function () {
     window.__ERP_ROL = esAdmin ? 'admin' : 'consultor'
+    window.__ERP_SUPABASE = supabase
   }, [esAdmin])
 
   return (
